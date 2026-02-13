@@ -1,7 +1,7 @@
 import { it } from "node:test";
 import { assertEq } from "./assert.ts";
 import { addNote, callNote, getNote } from "../src/db.ts";
-import { callNoteClient } from "../src/runtime.ts";
+import { callNoteClient, callViewClient } from "../src/runtime.ts";
 import type { Jsonable } from "@hashnotes/core/notes";
 
 it("playground e2e: addNote/getNote roundtrip for mixed payload shapes", async () => {
@@ -85,4 +85,37 @@ it("client fuel runner: remote cannot use local store space", async () => {
 
   const result = await callNoteClient(fn, null, { fuel: 100000 });
   assertEq(result, "local");
+});
+
+it("client view runner: returns (upper)=>VDom and can call upper.update", async () => {
+  const fn = `
+    return (upper) => {
+      const root = HTML.div(
+        HTML.p("count: " + arg.count),
+        HTML.button("inc")
+      );
+      const label = root.children[0];
+      const inc = root.children[1];
+      inc.onEvent = (e) => {
+        if (e.type !== "click") return;
+        arg.count += 1;
+        label.textContent = "count: " + arg.count;
+        upper.update(root);
+      };
+      return root;
+    };
+  `;
+
+  const updates: string[] = [];
+  const view = await callViewClient(fn, { count: 1 });
+  const root = view({
+    add: () => {},
+    del: () => {},
+    update: () => updates.push("u"),
+  });
+
+  assertEq(root.tag, "div");
+  root.children[1].onEvent?.({ type: "click", target: root.children[1] });
+  assertEq(root.children[0].textContent, "count: 2");
+  assertEq(updates.length, 1);
 });
