@@ -1,0 +1,16 @@
+{
+  "name": "@hashnotes/lib",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "node --test --experimental-strip-types __tests__/dag.test.ts",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hashnotes/core": "*"
+  }
+}

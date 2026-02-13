@@ -1,0 +1,10 @@
+{
+  "name": "hashnotes-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["core", "lib", "app"],
+  "scripts": {
+    "check": "npm run check --workspace core && npm run check --workspace lib && npm run check --workspace app",
+    "test": "npm run test --workspace core && npm run test --workspace lib"
+  }
+}

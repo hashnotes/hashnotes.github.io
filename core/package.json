@@ -1,0 +1,22 @@
+{
+  "name": "@hashnotes/core",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./notes": "./src/notes.ts",
+    "./parser": "./src/parser.ts",
+    "./hash": "./src/hash.ts"
+  },
+  "scripts": {
+    "build": "spacetime publish -s maincloud hashnotes",
+    "build:local": "spacetime build",
+    "publish": "spacetime publish",
+    "test": "node --test --experimental-strip-types __tests__/parser.test.ts",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "spacetimedb": "^1.11.4"
+  }
+}
