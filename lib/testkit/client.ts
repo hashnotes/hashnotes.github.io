@@ -5,7 +5,7 @@ export type Testkit = {
   setServer: (name: ServerName) => Promise<ServerName>;
   addNote: (data: Jsonable) => Promise<Ref>;
   getNote: (hash: Ref) => Promise<Jsonable>;
-  callNote: (fn: Ref, arg: Ref | Jsonable) => Promise<Jsonable>;
+  callNote: (fn: Ref | Jsonable, arg?: Ref | Jsonable) => Promise<Jsonable>;
 };
 
 export const createTestkit = (): Testkit => ({

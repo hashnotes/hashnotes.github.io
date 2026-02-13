@@ -236,8 +236,10 @@ export const getNote = async (hash: Ref): Promise<Jsonable> => {
   }
 };
 
-export const callNote = async (fn: Ref, arg: Ref | Jsonable): Promise<Jsonable> => {
-  const argRef = isRef(arg) ? arg : await addNote(arg);
-  const raw = await call("call_note", { fn, arg: argRef });
+export const callNote = async (fn: Ref | Jsonable, arg?: Ref | Jsonable): Promise<Jsonable> => {
+  const argInput: Ref | Jsonable = arg === undefined ? null : arg;
+  const fnRef = isRef(fn) ? fn : await addNote(fn);
+  const argRef = isRef(argInput) ? argInput : await addNote(argInput);
+  const raw = await call("call_note", { fn: fnRef, arg: argRef });
   return fromjson(raw) as Jsonable;
 };
