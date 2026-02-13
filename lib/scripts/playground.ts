@@ -9,7 +9,7 @@ SERVER.set("local")
 const E2E = (n: Jsonable)=>
   addNote(n)
   .then(h => {
-    return getNote(h, {skipCache: true})
+    return getNote(h, {skipCache: false})
   })
   .then(result => {
     let [a,b] = [result, n].map(x => JSON.stringify(x))

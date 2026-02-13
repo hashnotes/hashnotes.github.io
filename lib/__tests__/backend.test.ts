@@ -1,6 +1,7 @@
 import { it } from "node:test";
 import { assertEq } from "./assert.ts";
 import { addNote, callNote, getNote } from "../src/db.ts";
+import type { Jsonable } from "@hashnotes/core/notes";
 
 it("playground e2e: addNote/getNote roundtrip for mixed payload shapes", async () => {
   const cases = [
@@ -8,13 +9,15 @@ it("playground e2e: addNote/getNote roundtrip for mixed payload shapes", async (
     "222",
     [[1, 2]],
     { title: "playground", nested: { a: 1, b: [1, 2, 3213] } },
-  ] as const;
+  ] as Jsonable[];
 
-  for (const data of cases) {
-    const hash = await addNote(data);
-    const loaded = await getNote(hash, { skipCache: true });
-    assertEq(loaded, data);
-  }
+  await Promise.all(
+    cases.map(async (data) => {
+      const hash = await addNote(data);
+      const loaded = await getNote(hash, { skipCache: true });
+      assertEq(loaded, data);
+    })
+  );
 });
 
 it("playground e2e: callNote store roundtrip for different key/value objects", async () => {
@@ -28,10 +31,12 @@ it("playground e2e: callNote store roundtrip for different key/value objects", a
     { key: [1, 2], value: [3, 4, 5] },
     { key: { type: "obj", id: 1 }, value: { ok: true, nested: { n: 7 } } },
     { key: { path: ["a", "b"] }, value: { list: [1, 2, 3], note: "hello" } },
-  ] as const;
+  ] as {key: Jsonable, value: Jsonable}[];
 
-  for (const payload of cases) {
-    const result = await callNote(fn, payload);
-    assertEq(result, payload.value);
-  }
+  await Promise.all(
+    cases.map(async (payload) => {
+      const result = await callNote(fn, payload);
+      assertEq(result, payload.value);
+    })
+  );
 });
