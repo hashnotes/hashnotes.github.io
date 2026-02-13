@@ -8,6 +8,10 @@
   },
   "scripts": {
     "test": "node --test --experimental-strip-types __tests__/dag.test.ts",
+    "test:backend": "node --test --experimental-strip-types __tests__/backend.test.ts",
+    "script": "node --no-warnings=ExperimentalWarning --experimental-strip-types",
+    "script:smoke": "npm run script -- scripts/smoke.ts",
+    "script:play": "npm run script -- scripts/playground.ts",
     "check": "tsc --noEmit"
   },
   "dependencies": {
