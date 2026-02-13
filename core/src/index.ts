@@ -122,11 +122,15 @@ spacetimedb.procedure(
         fuelRef,
         { ...baseEnv, arg: argNote, argRef, call: callNote, callNote, store, addNote, getNote, asRef, deref }
       );
+      console.log(tojson(result as Jsonable));
       if ("ok" in result) return result.ok as Jsonable;
       if ("err" in result) throw new SenderError(`error executing note: ${result.err}`);
       throw new SenderError("unknown error executing note");
     };
 
-    return tojson(callNote(fn as Ref, arg as Ref));
+
+    let ref = addNote(callNote(fn, arg));
+    return ref
+
   })!
 );

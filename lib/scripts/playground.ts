@@ -1,33 +1,37 @@
-import { createTestkit } from "../testkit/client.ts";
 
+import { hash128 } from "@hashnotes/core/notes";
+import { addNote, getNote } from "../src/db.ts";
+
+type Jsonable = string | number | boolean | null | Jsonable[] | { [key: string]: Jsonable };
+
+const tojson = (x: Jsonable) => JSON.stringify(x, null, 2);
+
+const E2E = (n: Jsonable)=>
+  addNote(n)
+  .then(h => {
+    console.log(h)
+    return getNote(h)
+  })
+  .then(result => {
+    console.log(result)
+    console.log(result === n ? "E2E success" : "E2E failure")
+  })
 
 const main = async () => {
 
-  console.log("STSR")
-  const kit = createTestkit();
-  console.log("Setting server to maincloud...");
-  await kit.setServer("maincloud");
-
-  console.log("Adding note...");
-
   const sample = {
     title: "playground",
-    nested: { a: 1, b: [1, 2, 3] },
+    nested: { a: 1, b: [1, 2, 3213], nonce: hash128(Date.now())},
   };
 
-  const hash = await kit.addNote(sample);
-  console.log("saved:", hash);
-  console.log("loaded:", JSON.stringify(await kit.getNote(hash), null, 2));
+  E2E(222);
+  E2E("222");
 
-  const fn = `
-  store.set("counter", 332);
-  return store.get("counter");
-  `;
-
-  const result = await kit.callNote(fn, null);
-  console.log("call result:", result);
-
-  
+  console.log(sample)
+  // console.log(await addNote(sample))
+  // console.log(await addNote(22))
+  // console.log(await addNote({title:22}))
+  // addNote(sample)
 };
 
-main()
+main();

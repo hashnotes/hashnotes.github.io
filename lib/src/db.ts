@@ -144,6 +144,11 @@ let baseUrl = URL_PRESETS[SERVER.get()];
 let accessToken: string | null = null;
 
 const req = async (path: string, method: string, body: string | null = null): Promise<Response> => {
+  if (!accessToken)  accessToken = await getCachedToken(SERVER.get());
+  if (!accessToken) {
+    accessToken = await createIdentityToken(baseUrl);
+    await setCachedToken(SERVER.get(), accessToken);
+  }
   if (typeof fetch === "undefined") throw new Error("fetch is not available");
   return fetch(`${baseUrl}${path}`, {
     method,
@@ -155,18 +160,37 @@ const req = async (path: string, method: string, body: string | null = null): Pr
   });
 };
 
-const call = async (name: string, payload: unknown): Promise<string> => {
-  if (!accessToken) {
-    accessToken = await getCachedToken(SERVER.get());
+const normalizeCallPayload = (raw: string): string => {
+  let current: unknown = raw;
+  // Spacetime may wrap payloads as nested status tuples and JSON strings.
+  // Normalize to a single payload string for downstream parsing.
+  while (true) {
+    if (typeof current === "string") {
+      try {
+        current = JSON.parse(current) as unknown;
+        continue;
+      } catch {
+        return String(current);
+      }
+    }
+    if (Array.isArray(current) && current.length >= 2 && typeof current[0] === "number") {
+      const status = current[0];
+      const payload = current[1];
+      if (status !== 0) {
+        throw new Error(typeof payload === "string" ? payload : JSON.stringify(payload));
+      }
+      current = payload;
+      continue;
+    }
+    return JSON.stringify(current);
   }
-  if (!accessToken) {
-    accessToken = await createIdentityToken(baseUrl);
-    await setCachedToken(SERVER.get(), accessToken);
-  }
+};
 
+const call = async (name: string, payload: unknown): Promise<string> => {
   const res = await req(`/v1/database/${DB_NAME}/call/${name}`, "POST", JSON.stringify(payload));
-  if (!res.ok) throw new Error(await res.text());
-  return res.text();
+  const text = await res.text();
+  if (!res.ok) throw new Error(text);
+  return normalizeCallPayload(text);
 };
 
 export const clearNoteCache = () => {
@@ -234,12 +258,32 @@ export const getNote = async (hash: Ref): Promise<Jsonable> => {
   } finally {
     getInFlight.delete(hash);
   }
-};
+};  
 
 export const callNote = async (fn: Ref | Jsonable, arg?: Ref | Jsonable): Promise<Jsonable> => {
   const argInput: Ref | Jsonable = arg === undefined ? null : arg;
   const fnRef = isRef(fn) ? fn : await addNote(fn);
   const argRef = isRef(argInput) ? argInput : await addNote(argInput);
   const raw = await call("call_note", { fn: fnRef, arg: argRef });
-  return fromjson(raw) as Jsonable;
+
+  const decodeCallResult = (value: Jsonable): Jsonable => {
+    if (Array.isArray(value) && value.length >= 2 && typeof value[0] === "number") {
+      return decodeCallResult(value[1] as Jsonable);
+    }
+    if (typeof value === "string") {
+      try {
+        return decodeCallResult(fromjson(value) as Jsonable);
+      } catch {
+        return value;
+      }
+    }
+    return value;
+  };
+
+  const maybeRef = raw.trim();
+  if (isRef(maybeRef)) return decodeCallResult(await getNote(maybeRef));
+  const parsed = fromjson(raw) as Jsonable;
+  const decoded = decodeCallResult(parsed);
+  if (isRef(decoded)) return decodeCallResult(await getNote(decoded));
+  return decoded;
 };
