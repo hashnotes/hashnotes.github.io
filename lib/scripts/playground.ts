@@ -1,20 +1,21 @@
 
 import { hash128 } from "@hashnotes/core/notes";
-import { addNote, getNote } from "../src/db.ts";
+import { addNote, callNote, getNote, SERVER } from "../src/db.ts";
 
 type Jsonable = string | number | boolean | null | Jsonable[] | { [key: string]: Jsonable };
 
-const tojson = (x: Jsonable) => JSON.stringify(x, null, 2);
+SERVER.set("local")
 
 const E2E = (n: Jsonable)=>
   addNote(n)
   .then(h => {
     console.log(h)
-    return getNote(h)
+    return getNote(h, {skipCache: true})
   })
   .then(result => {
     console.log(result)
-    console.log(result === n ? "E2E success" : "E2E failure")
+    let [a,b] = [result, n].map(x => JSON.stringify(x))
+    console.log(a == b ? "✓" : "✗", a, b)
   })
 
 const main = async () => {
@@ -26,8 +27,13 @@ const main = async () => {
 
   E2E(222);
   E2E("222");
+  E2E([[1,2]]);
 
   console.log(sample)
+
+  console.log(await callNote(
+    "return [[532]]"
+  ))
   // console.log(await addNote(sample))
   // console.log(await addNote(22))
   // console.log(await addNote({title:22}))

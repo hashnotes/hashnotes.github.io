@@ -1,6 +1,6 @@
 import { schema, table, t, SenderError } from "spacetimedb/server";
 import { fromjson, hash128, hashData, isRef, tojson, type Jsonable, type Ref } from "./notes.ts";
-import { runWithFuelShared } from "./parser.ts";
+import { runWithFuelShared } from "./codegen.ts";
 
 const RefT = t.string();
 
@@ -32,7 +32,7 @@ spacetimedb.view(
   (ctx) => [{ count: ctx.db.note.count() }]
 );
 
-let add_note = spacetimedb.reducer(
+spacetimedb.reducer(
   "add_note",
   { data: t.string() },
   (ctx, { data }) => {
@@ -53,7 +53,7 @@ let add_note = spacetimedb.reducer(
 spacetimedb.procedure(
   "get_note",
   { hash: RefT },
-  t.option(t.string()),
+  t.string(),
   (ctx, { hash }) => ctx.withTx((tx) => {
     if (!isRef(hash)) throw new SenderError("hash must be a #ref");
     const row = tx.db.note.hash.find(hash as Ref);

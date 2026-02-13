@@ -921,18 +921,3 @@ export const parse = (src: string): Program => {
 
   return parseProgram();
 };
-
-// Re-export codegen + runtime from codegen.ts so existing import paths keep working
-export {
-  assertSafeIdent,
-  renderWithFuel,
-  renderRunnerWithFuel,
-  renderRunnerWithFuelShared,
-  renderRunnerWithFuelSharedAsync,
-  renderRunnerWithFuelAsync,
-  runWithFuel,
-  runWithFuelShared,
-  runWithFuelSharedAsync,
-  runWithFuelAsync,
-} from "./codegen.ts";
-export type { runRes } from "./codegen.ts";

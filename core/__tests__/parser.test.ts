@@ -1,7 +1,8 @@
 
 import { it } from "node:test";
 import { type Jsonable } from "@hashnotes/core/notes";
-import { runWithFuel, runWithFuelAsync, parse, validateScopes, validateNoPrototype, assertSafeIdent, renderWithFuel } from "@hashnotes/core/parser";
+import { parse, validateScopes, validateNoPrototype } from "@hashnotes/core/parser";
+import { runWithFuel, runWithFuelAsync, assertSafeIdent, renderWithFuel } from "../src/codegen.ts";
 
 const assert = (t: boolean, msg?: string) => { if (!t) throw new Error(msg || "Assertion failed") }
 
