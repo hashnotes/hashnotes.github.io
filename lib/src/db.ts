@@ -27,12 +27,11 @@ const accessToken = async (): Promise<string | null> => {
 export const setServer = (value: ServerName) => {
   localStorage.setItem("db_preset", value);
   SERVER = value;
+  console.log("connect to", SERVER)
 };
 
 export let getServer = () => SERVER;
-
-
-
+console.log("connect to", SERVER)
 
 const call = async (name: string, payload: unknown): Promise<string> => {
   const res = await fetch(`${baseUrl()}/v1/database/${DB_NAME}/call/${name}`, {
