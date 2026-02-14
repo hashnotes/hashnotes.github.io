@@ -7,13 +7,10 @@ Keep only what is essential: parser/runtime, VDom/DAG rendering, and hash-addres
 ## Restart Spirit
 This project is a clean restart. Prefer direct, obvious code first.
 
+- Minimize code size.
 - Start with the smallest working version.
 - Do not add abstraction until a concrete, current use case requires it.
-- If a simple implementation passes tests, keep it.
-- Optimize for readability and auditability over cleverness.
-- Treat future flexibility as optional, not default scope.
-
-When in doubt: choose the boring implementation that is easy to explain in 2-3 sentences.
+- Do not add layers indirections etc until necessary.
 
 ## Core Principles
 
@@ -43,25 +40,10 @@ When in doubt: choose the boring implementation that is easy to explain in 2-3 s
 - Avoid hidden/implicit writes in render paths.
 - Keep execution and persistence paths explicit and testable.
 
-6. Auditable execution
-- Prefer simple, direct control flow over abstraction-heavy implementations.
-- Trace records should be minimal and understandable.
-- Add complexity only when required by concrete use cases.
-
-7. Testing discipline
+6. Testing discipline
 - Preserve parser and VDom/DAG tests as core safety rails.
 - Add tests around data normalization and note insert semantics.
 - Favor small, behavior-focused tests.
-
-8. Incremental refactors
-- Avoid big-bang rewrites.
-- Stabilize contracts first, then move code.
-- Keep each change set narrow and reversible.
-
-## Non-Goals (for now)
-- Rich schema system for each note.
-- Over-generalized framework abstractions.
-- Feature growth that weakens auditability.
 
 ## Default Decision Rule
 When choosing between options, pick the one that is:

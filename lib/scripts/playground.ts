@@ -1,6 +1,7 @@
 import type { Jsonable } from "@hashnotes/core/notes";
 import { addNote, callNote, getNote, SERVER } from "../src/db.ts";
 import { callNoteClient } from "../src/runtime.ts";
+import { spawn } from "node:child_process";
 
 
 const printCheck = (label: string, ok: boolean, expected: unknown, got: unknown) => {
@@ -17,6 +18,34 @@ const roundtrip = async (label: string, value: Jsonable) => {
   const loaded = await getNote(hash, { skipCache: true });
   printCheck(`${label} roundtrip`, JSON.stringify(loaded) === JSON.stringify(value), value, loaded);
   return hash;
+};
+
+const openInBrowser = (url: string) => {
+  const platform = process.platform;
+  if (platform === "darwin") {
+    spawn("open", [url], { stdio: "ignore", detached: true }).unref();
+    return;
+  }
+  if (platform === "win32") {
+    spawn("cmd", ["/c", "start", "", url], { stdio: "ignore", detached: true }).unref();
+    return;
+  }
+  spawn("xdg-open", [url], { stdio: "ignore", detached: true }).unref();
+};
+
+const publishView = async (
+  viewFn: string,
+  options: { open?: boolean; appOrigin?: string } = {}
+) => {
+  const hash = await addNote(viewFn);
+  const appOrigin = options.appOrigin ?? process.env.HASHNOTES_APP_ORIGIN ?? "http://localhost:5173";
+  const url = `${appOrigin}/${hash.slice(1)}`;
+
+  console.log("view hash:", hash);
+  console.log("view url :", url);
+
+  if (options.open ?? true) openInBrowser(url);
+  return { hash, url };
 };
 
 const main = async () => {
@@ -50,6 +79,30 @@ const main = async () => {
 
   const clientResult = await callNoteClient(storeFN, FNARG)
   console.log("client runtime result:", JSON.stringify(clientResult));
+
+  console.log("\n=== publish view ===");
+  await publishView(
+    `
+      return (upper) => {
+        let count = 0
+        let label = HTML.p("count: "+ 0)
+        const root = HTML.div(
+          { style: { padding: "1rem", fontFamily: "monospace" } },
+          HTML.h3("Playground View"),
+          label,
+          HTML.button("increment")
+        );
+        const btn = root.children[2];
+        btn.onEvent = (e) => {
+          if (e.type !== "click") return;
+          count += 1;
+          label.textContent = "count: " + count;
+          upper.update(root);
+        };
+        return root;
+      };
+    `
+  );
 };
 
 main().catch((err) => {
