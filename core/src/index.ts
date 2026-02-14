@@ -57,7 +57,9 @@ spacetimedb.procedure(
   (ctx, { hash }) => ctx.withTx((tx) => {
     if (!isRef(hash)) throw new SenderError("hash must be a #ref");
     const row = tx.db.note.hash.find(hash as Ref);
-    if (!row) throw new SenderError(`note not found: ${hash}`);
+    // Missing notes should not surface as 500s to clients. Returning a JSON null
+    // lets callers render a friendly "not found" state.
+    if (!row) return "null";
     return row.data;
   })
 );
