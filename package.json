@@ -7,7 +7,7 @@
     "check": "npm run check --workspace core && npm run check --workspace lib && npm run check --workspace app",
     "test": "npm run test --workspace core && npm run test --workspace lib && npm run test:backend --workspace lib",
     "dev": "npm run dev --workspace app --",
-    "build": "npm run build --workspace app --"
+    "build": "npm run build --workspace app -- && node -e \"require('node:fs').copyFileSync('docs/index.html','docs/404.html')\""
   },
   "devDependencies": {
     "vite": "^6.0.0"
