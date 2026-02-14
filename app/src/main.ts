@@ -28,6 +28,6 @@ export const boot = async () => {
     mount.innerHTML = "";
     mount.append(el);
   } catch (err) {
-    mount.innerHTML = `<pre>Failed to render note ${ref} on server ${SERVER.get()}: ${String(err)}</pre>`;
+    mount.innerHTML = `<pre>Failed to render note ${ref} on server ${SERVER.name()}: ${String(err)}</pre>`;
   }
 };

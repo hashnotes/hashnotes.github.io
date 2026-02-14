@@ -1,56 +1,43 @@
 import { fromjson, hashData, isRef, tojson, type Jsonable, type Ref } from "@hashnotes/core/notes";
 
-// Section: public types + config
 export type ServerName = "local" | "maincloud";
 type CacheOptions = { skipCache?: boolean };
-
 const DB_NAME = "hashnotes";
-const URL_PRESETS: Record<ServerName, string> = {
-  local: "http://localhost:3000",
-  maincloud: "https://maincloud.spacetimedb.com",
-};
 
-// Section: server/session state
-const ls = typeof localStorage !== "undefined" ? localStorage : null;
-const tokenKey = (server: ServerName) => `access_token:${server}`;
-const defaultServer = (): ServerName => (ls?.getItem("db_preset") === "local" ? "local" : "maincloud");
+// export const SERVER = {
+//   value: "",
+//   name: () : ServerName => SERVER.value == "local" ? "local" : "maincloud",
+//   baseUrl: (): string => ({
+//     local: "http://localhost:3000",
+//     maincloud: "https://maincloud.spacetimedb.com",
+//   })[SERVER.name()],
+const accessToken = async (): Promise<string | null> => {
+  let tokenkey = () => `access_token:${SERVER}`;
+  let tkey = tokenkey();
+  let token = localStorage.getItem(tkey)
+  if (!token){
+    token = await fetch(`${SERVER.baseUrl}/v1/identity`, { method: "POST", headers: { "Content-Type": "application/json" } })
+    .then(r=>r.json()).then(j=>j.token || null)
+    if (tkey != tokenkey()) return SERVER.accessToken();
+    if (token) localStorage.setItem(tkey, token)
+  }
+  return token
+},
+  
+//   setName: (value: ServerName) => {
+//     localStorage.setItem("db_preset", value);
+//     return value;
+//   },
+// };
 
-let currentServer: ServerName = defaultServer();
-let baseUrl = URL_PRESETS[currentServer];
-let accessToken: string | null = ls?.getItem(tokenKey(currentServer)) ?? null;
-
-export const SERVER = {
-  value: currentServer,
-  get: (): ServerName => currentServer,
-  set: async (value: ServerName) => {
-    currentServer = value;
-    SERVER.value = value;
-    baseUrl = URL_PRESETS[value];
-    ls?.setItem("db_preset", value);
-    accessToken = ls?.getItem(tokenKey(value)) ?? null;
-    return value;
-  },
-};
-
+export const SERVER: ServerName = "maincloud"
 
 const call = async (name: string, payload: unknown): Promise<string> => {
-  if (!accessToken) accessToken = ls?.getItem(tokenKey(currentServer)) ?? null;
-  if (!accessToken) {
-    const res = await fetch(`${baseUrl}/v1/identity`, { method: "POST", headers: { "Content-Type": "application/json" } });
-    accessToken = ( (await res.json()) as { token?: string })?.token || null;
-    if (accessToken) ls?.setItem(tokenKey(currentServer), accessToken);
-  }
-
-  if (typeof fetch === "undefined") throw new Error("fetch is not available");
-  const res = await fetch(`${baseUrl}/v1/database/${DB_NAME}/call/${name}`, {
+  const res = await fetch(`${SERVER.baseUrl()}/v1/database/${DB_NAME}/call/${name}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    },
+    headers: {"Content-Type": "application/json", Authorization: await SERVER.accessToken().then(t=>t?`Bearer ${t}`:'')},
     body: JSON.stringify(payload),
   });
-
   const text = await res.text();
   if (!res.ok) throw new Error(text);
   return text;
