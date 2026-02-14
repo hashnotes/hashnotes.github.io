@@ -86,13 +86,12 @@ const main = async () => {
       return (upper) => {
         let count = 0
         let label = HTML.p("count: "+ 0)
+        let btn = HTML.button("increment")
         const root = HTML.div(
           { style: { padding: "1rem", fontFamily: "monospace" } },
-          HTML.h3("Playground View"),
-          label,
-          HTML.button("increment")
+          HTML.h3("View"),
+          label, btn
         );
-        const btn = root.children[2];
         btn.onEvent = (e) => {
           if (e.type !== "click") return;
           count += 1;
