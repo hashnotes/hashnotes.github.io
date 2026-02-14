@@ -193,6 +193,151 @@ const renderPatternProperty = (p: PatternProperty): string => {
   return `${key}: ${renderPattern(p.value)}`;
 };
 
+const validateNoReservedRuntimeNames = (program: Program, reservedNames: string[]): string[] => {
+  const reserved = new Set(reservedNames);
+  const errors: string[] = [];
+
+  const hit = (name: string) => {
+    if (reserved.has(name)) errors.push(`reserved identifier: ${name}`);
+  };
+
+  const visitPattern = (p: Pattern): void => {
+    switch (p.type) {
+      case "Identifier":
+        hit(p.name);
+        return;
+      case "RestElement":
+        visitPattern(p.argument);
+        return;
+      case "ArrayPattern":
+        p.elements.forEach(visitPattern);
+        return;
+      case "ObjectPattern":
+        p.properties.forEach((prop) => {
+          if (prop.type === "RestElement") {
+            visitPattern(prop.argument);
+            return;
+          }
+          visitPattern(prop.value);
+        });
+        return;
+    }
+  };
+
+  const visitExpr = (e: Expr): void => {
+    switch (e.type) {
+      case "Identifier":
+        hit(e.name);
+        return;
+      case "Literal":
+        return;
+      case "SpreadElement":
+        visitExpr(e.argument);
+        return;
+      case "ArrayExpression":
+        e.elements.forEach((el) => visitExpr(el));
+        return;
+      case "ObjectExpression":
+        e.properties.forEach((p) => {
+          if (p.type === "SpreadElement") {
+            visitExpr(p.argument);
+            return;
+          }
+          if (p.shorthand && p.value.type === "Identifier") hit(p.value.name);
+          visitExpr(p.value);
+        });
+        return;
+      case "AwaitExpression":
+        visitExpr(e.argument);
+        return;
+      case "CallExpression":
+        visitExpr(e.callee);
+        e.arguments.forEach((a) => visitExpr(a));
+        return;
+      case "MemberExpression":
+        visitExpr(e.object);
+        if (e.computed) visitExpr(e.property);
+        return;
+      case "AssignmentExpression":
+        visitExpr(e.left);
+        visitExpr(e.right);
+        return;
+      case "UpdateExpression":
+        visitExpr(e.argument);
+        return;
+      case "BinaryExpression":
+      case "LogicalExpression":
+        visitExpr(e.left);
+        visitExpr(e.right);
+        return;
+      case "UnaryExpression":
+        visitExpr(e.argument);
+        return;
+      case "ConditionalExpression":
+        visitExpr(e.test);
+        visitExpr(e.consequent);
+        visitExpr(e.alternate);
+        return;
+      case "ArrowFunctionExpression":
+        e.params.forEach(visitPattern);
+        if (e.body.type === "BlockStatement") visitStmt(e.body);
+        else visitExpr(e.body);
+        return;
+    }
+  };
+
+  const visitVarDecl = (d: VarDecl) => {
+    visitPattern(d.id);
+    if (d.init) visitExpr(d.init);
+  };
+
+  const visitStmt = (s: Stmt): void => {
+    switch (s.type) {
+      case "BlockStatement":
+        s.body.forEach(visitStmt);
+        return;
+      case "ExpressionStatement":
+        visitExpr(s.expression);
+        return;
+      case "IfStatement":
+        visitExpr(s.test);
+        visitStmt(s.consequent);
+        if (s.alternate) visitStmt(s.alternate);
+        return;
+      case "ReturnStatement":
+        if (s.argument) visitExpr(s.argument);
+        return;
+      case "VariableDeclaration":
+        s.declarations.forEach(visitVarDecl);
+        return;
+      case "WhileStatement":
+        visitExpr(s.test);
+        visitStmt(s.body);
+        return;
+      case "ForStatement":
+        if (Array.isArray(s.init)) s.init.forEach(visitVarDecl);
+        else if (s.init) visitExpr(s.init);
+        if (s.test) visitExpr(s.test);
+        if (s.update) visitExpr(s.update);
+        visitStmt(s.body);
+        return;
+      case "ForInStatement":
+      case "ForOfStatement":
+        if (Array.isArray(s.left)) s.left.forEach(visitVarDecl);
+        else visitExpr(s.left);
+        visitExpr(s.right);
+        visitStmt(s.body);
+        return;
+      case "BreakStatement":
+      case "ContinueStatement":
+        return;
+    }
+  };
+
+  program.body.forEach(visitStmt);
+  return errors;
+};
+
 // ---------------------------------------------------------------------------
 // Runner codegen (wraps program body with fuel metering)
 // ---------------------------------------------------------------------------
@@ -211,6 +356,8 @@ export const renderRunnerWithFuel = (program: Program, fuel = 10000) => {
 
 export const renderRunnerWithFuelShared = (program: Program, fuelRefName = "__fuel") => {
   assertSafeIdent(fuelRefName);
+  const reservedErrs = validateNoReservedRuntimeNames(program, [fuelRefName, "__burn"]);
+  if (reservedErrs.length) throw new Error(reservedErrs.join(", "));
   const prelude = `const __burn = () => { if (--${fuelRefName}.value < 0) throw new Error("fuel exhausted"); };`;
   const body = program.body.map((s) => renderStmt(s, true)).join("");
   return `${prelude}const __run = () => {${body}}; try { const ok = __run(); return { ok, fuel: ${fuelRefName}.value }; } catch (err) { return { err: String(err), fuel: ${fuelRefName}.value }; }`;
@@ -218,6 +365,8 @@ export const renderRunnerWithFuelShared = (program: Program, fuelRefName = "__fu
 
 export const renderRunnerWithFuelSharedAsync = (program: Program, fuelRefName = "__fuel") => {
   assertSafeIdent(fuelRefName);
+  const reservedErrs = validateNoReservedRuntimeNames(program, [fuelRefName, "__burn"]);
+  if (reservedErrs.length) throw new Error(reservedErrs.join(", "));
   const prelude = `const __burn = () => { if (--${fuelRefName}.value < 0) throw new Error("fuel exhausted"); };`;
   const body = program.body.map((s) => renderStmt(s, true)).join("");
   return `${prelude}const __run = async () => {${body}}; return __run().then(ok => ({ ok, fuel: ${fuelRefName}.value })).catch(err => ({ err: String(err), fuel: ${fuelRefName}.value }));`;

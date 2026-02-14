@@ -426,6 +426,25 @@ it("security: assertSafeIdent allows valid identifiers", () => {
   }
 })
 
+it("security: reserved runtime identifiers are rejected in user code", () => {
+  const cases = [
+    "return __fuel",
+    "let __fuel = 1; return __fuel",
+    "const f = (__fuel) => __fuel; return f(1)",
+    "const x = {__fuel}; return x",
+    "return __burn()",
+    "const f = (__burn) => __burn; return f(1)",
+  ];
+  for (const code of cases) {
+    const res = runWithFuel(code, 1000);
+    assert("err" in res, `expected reserved identifier rejection for: ${code}`);
+    assert(
+      res.err.includes("reserved identifier") || res.err.includes("undeclared"),
+      `expected reserved/undeclared identifier error for '${code}', got: ${res.err}`
+    );
+  }
+})
+
 // ---------------------------------------------------------------------------
 // Regression: codegen round-trip
 // ---------------------------------------------------------------------------

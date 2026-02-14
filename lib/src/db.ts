@@ -4,38 +4,40 @@ export type ServerName = "local" | "maincloud";
 type CacheOptions = { skipCache?: boolean };
 const DB_NAME = "hashnotes";
 
-// export const SERVER = {
-//   value: "",
-//   name: () : ServerName => SERVER.value == "local" ? "local" : "maincloud",
-//   baseUrl: (): string => ({
-//     local: "http://localhost:3000",
-//     maincloud: "https://maincloud.spacetimedb.com",
-//   })[SERVER.name()],
+let SERVER: ServerName = localStorage.getItem("db_preset") == "local" ? "local" : "maincloud";
+
+const baseUrl = (): string => ({
+  local: "http://localhost:3000",
+  maincloud: "https://maincloud.spacetimedb.com",
+})[SERVER]
+
 const accessToken = async (): Promise<string | null> => {
   let tokenkey = () => `access_token:${SERVER}`;
   let tkey = tokenkey();
   let token = localStorage.getItem(tkey)
   if (!token){
-    token = await fetch(`${SERVER.baseUrl}/v1/identity`, { method: "POST", headers: { "Content-Type": "application/json" } })
+    token = await fetch(`${baseUrl()}/v1/identity`, { method: "POST", headers: { "Content-Type": "application/json" } })
     .then(r=>r.json()).then(j=>j.token || null)
-    if (tkey != tokenkey()) return SERVER.accessToken();
+    if (tkey != tokenkey()) return accessToken();
     if (token) localStorage.setItem(tkey, token)
   }
   return token
-},
-  
-//   setName: (value: ServerName) => {
-//     localStorage.setItem("db_preset", value);
-//     return value;
-//   },
-// };
+};
 
-export const SERVER: ServerName = "maincloud"
+export const setServer = (value: ServerName) => {
+  localStorage.setItem("db_preset", value);
+  SERVER = value;
+};
+
+export let getServer = () => SERVER;
+
+
+
 
 const call = async (name: string, payload: unknown): Promise<string> => {
-  const res = await fetch(`${SERVER.baseUrl()}/v1/database/${DB_NAME}/call/${name}`, {
+  const res = await fetch(`${baseUrl()}/v1/database/${DB_NAME}/call/${name}`, {
     method: "POST",
-    headers: {"Content-Type": "application/json", Authorization: await SERVER.accessToken().then(t=>t?`Bearer ${t}`:'')},
+    headers: {"Content-Type": "application/json", Authorization: await accessToken().then(t=>t?`Bearer ${t}`:'')},
     body: JSON.stringify(payload),
   });
   const text = await res.text();

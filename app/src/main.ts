@@ -1,5 +1,6 @@
-import { callViewClient, renderDom, SERVER } from "@hashnotes/lib";
+import { callViewClient, renderDom } from "@hashnotes/lib";
 import { isRef, type Ref } from "@hashnotes/core/notes";
+import { getServer } from "../../lib/src/db";
 
 const parseRefFromPath = (pathname: string): Ref | null => {
   const segment = pathname.replace(/^\/+/, "").split("/")[0];
@@ -28,6 +29,6 @@ export const boot = async () => {
     mount.innerHTML = "";
     mount.append(el);
   } catch (err) {
-    mount.innerHTML = `<pre>Failed to render note ${ref} on server ${SERVER.name()}: ${String(err)}</pre>`;
+    mount.innerHTML = `<pre>Failed to render note ${ref} on server ${getServer()}: ${String(err)}</pre>`;
   }
 };

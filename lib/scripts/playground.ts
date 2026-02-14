@@ -1,5 +1,5 @@
 import type { Jsonable } from "@hashnotes/core/notes";
-import { addNote, callNote, getNote, SERVER } from "../src/db.ts";
+import { addNote, callNote, getNote, getServer, setServer } from "../src/db.ts";
 import { callNoteClient } from "../src/runtime.ts";
 import { spawn } from "node:child_process";
 
@@ -50,7 +50,7 @@ const publishView = async (
 
 const main = async () => {
   const server = (process.env.HASHNOTES_SERVER === "maincloud" ? "maincloud" : "local");
-  await SERVER.set(server);
+  await setServer(server);
   console.log(`server: ${server}`);
 
   console.log("=== addNote/getNote === ");
