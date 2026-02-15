@@ -32,10 +32,6 @@ const publishView = async (
 };
 
 const main = async () => {
-  // This script requires an accessible SpacetimeDB endpoint.
-  // Configure via `HASHNOTES_SERVER=local` (and run `spacetime start`) or provide a reachable maincloud setup.
-  // If you see `ENOTFOUND maincloud.spacetimedb.com`, your environment has no network/DNS.
-
   const remoteFn = `
     let count = store.get("count") || 0  ;
     count += arg.dif;
@@ -43,31 +39,29 @@ const main = async () => {
     return count;
   `;
 
+  await publishView(`
+  const remoteFn = ${tojson(remoteFn)};
 
-	  await publishView(
-	    `
-	      const remoteFn = ${tojson(remoteFn)};
-        let req = dif => remote(remoteFn, {dif})
-
-	      return (upper) => {
-	        let label = HTML.p("count: loading...");
-	        let btn = HTML.button("increment");
-	        const root = HTML.div(
-	          HTML.h3("Store View"),
-	          label, btn
-	        );
-          let update = dif => req(dif).then(c=>{
-            label.textContent = "count: " + c;
-            upper.update(root)
-          })
+  return (upper) => {
+    let label = HTML.p("count: loading...");
+    let root;
+    let update = dif => remote(remoteFn, {dif}).then(c=>{
+      label.textContent = "count: " + c;
+      upper.update(root)
+    })
+    root = HTML.div(
+      HTML.h3("Store View"),
+      label,
+      HTML.button("increment",
+        {onclick: e=>{
+          if (e.type !== "click") return;
           update(1);
-	        btn.onEvent = (e) => {
-	          if (e.type !== "click") return;
-	          update(1);
-	        };
-	        return root;
-	      };
-	    `,
+        }}
+      )
+    );
+    update(1);
+    return root;
+  };`,
 	    { open: true }
 	  );
 };
