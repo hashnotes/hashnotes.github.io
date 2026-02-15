@@ -64,7 +64,28 @@ const tokenize = (src: string): Token[] => {
         const ch = next();
         if (ch === "\\") {
           const esc = next();
-          out += esc;
+          if (esc === "n") out += "\n";
+          else if (esc === "r") out += "\r";
+          else if (esc === "t") out += "\t";
+          else if (esc === "b") out += "\b";
+          else if (esc === "f") out += "\f";
+          else if (esc === "0") out += "\0";
+          else if (esc === "\\") out += "\\";
+          else if (esc === quote) out += quote;
+          else if (esc === "u") {
+            const hex = src.slice(i, i + 4);
+            if (!/^[0-9a-fA-F]{4}$/.test(hex)) throw new Error(`Invalid unicode escape at ${i - 2}`);
+            out += String.fromCharCode(parseInt(hex, 16));
+            i += 4;
+          } else if (esc === "x") {
+            const hex = src.slice(i, i + 2);
+            if (!/^[0-9a-fA-F]{2}$/.test(hex)) throw new Error(`Invalid hex escape at ${i - 2}`);
+            out += String.fromCharCode(parseInt(hex, 16));
+            i += 2;
+          } else {
+            // Preserve unknown escapes as-is (JS mostly treats them as the escaped char).
+            out += esc;
+          }
         } else if (ch === quote) {
           break;
         } else {

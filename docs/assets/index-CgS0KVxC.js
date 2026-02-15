@@ -237,7 +237,31 @@ const hashData = (value) => {
   throw new Error(`unsupported type for hashing: ${typeof value}`);
 };
 const DB_NAME = "hashnotes";
-let SERVER = localStorage.getItem("db_preset") == "local" ? "local" : "maincloud";
+const env = () => {
+  var _a;
+  return (_a = globalThis == null ? void 0 : globalThis.process) == null ? void 0 : _a.env;
+};
+const KV = (() => {
+  try {
+    if (typeof localStorage !== "undefined" && localStorage) return localStorage;
+  } catch {
+  }
+  const m = /* @__PURE__ */ new Map();
+  return {
+    getItem: (k) => m.get(k) ?? null,
+    setItem: (k, v) => {
+      m.set(k, v);
+    },
+    removeItem: (k) => {
+      m.delete(k);
+    }
+  };
+})();
+let SERVER = (() => {
+  const e = env();
+  const v = e == null ? void 0 : e.HASHNOTES_SERVER;
+  return v === "local" || v === "maincloud" ? v : KV.getItem("db_preset") === "local" ? "local" : "maincloud";
+})();
 const baseUrl = () => ({
   local: "http://localhost:3000",
   maincloud: "https://maincloud.spacetimedb.com"
@@ -245,15 +269,17 @@ const baseUrl = () => ({
 const accessToken = async () => {
   let tokenkey = () => `access_token:${SERVER}`;
   let tkey = tokenkey();
-  let token = localStorage.getItem(tkey);
+  const e = env();
+  const envToken = (SERVER === "local" ? e == null ? void 0 : e.HASHNOTES_ACCESS_TOKEN_LOCAL : e == null ? void 0 : e.HASHNOTES_ACCESS_TOKEN_MAINCLOUD) ?? (e == null ? void 0 : e.HASHNOTES_ACCESS_TOKEN);
+  if (envToken) return envToken;
+  let token = KV.getItem(tkey);
   if (!token) {
     token = await fetch(`${baseUrl()}/v1/identity`, { method: "POST", headers: { "Content-Type": "application/json" } }).then((r) => r.json()).then((j) => j.token || null);
     if (tkey != tokenkey()) return accessToken();
-    if (token) localStorage.setItem(tkey, token);
+    if (token) KV.setItem(tkey, token);
   }
   return token;
 };
-let getServer = () => SERVER;
 console.log("connect to", SERVER);
 const call = async (name, payload) => {
   const res = await fetch(`${baseUrl()}/v1/database/${DB_NAME}/call/${name}`, {
@@ -378,7 +404,27 @@ const tokenize = (src) => {
         const ch = next();
         if (ch === "\\") {
           const esc = next();
-          out += esc;
+          if (esc === "n") out += "\n";
+          else if (esc === "r") out += "\r";
+          else if (esc === "t") out += "	";
+          else if (esc === "b") out += "\b";
+          else if (esc === "f") out += "\f";
+          else if (esc === "0") out += "\0";
+          else if (esc === "\\") out += "\\";
+          else if (esc === quote) out += quote;
+          else if (esc === "u") {
+            const hex = src.slice(i, i + 4);
+            if (!/^[0-9a-fA-F]{4}$/.test(hex)) throw new Error(`Invalid unicode escape at ${i - 2}`);
+            out += String.fromCharCode(parseInt(hex, 16));
+            i += 4;
+          } else if (esc === "x") {
+            const hex = src.slice(i, i + 2);
+            if (!/^[0-9a-fA-F]{2}$/.test(hex)) throw new Error(`Invalid hex escape at ${i - 2}`);
+            out += String.fromCharCode(parseInt(hex, 16));
+            i += 2;
+          } else {
+            out += esc;
+          }
         } else if (ch === quote) {
           break;
         } else {
@@ -1480,17 +1526,17 @@ const parseFunctionCtor = (ctorArgs) => {
   return { params, body };
 };
 const mapFunctionArgs = (params, callArgs) => {
-  const env = {};
+  const env2 = {};
   let idx = 0;
   for (const p of params) {
     if (p.rest) {
-      env[p.name] = callArgs.slice(idx);
+      env2[p.name] = callArgs.slice(idx);
       idx = callArgs.length;
     } else {
-      env[p.name] = callArgs[idx++];
+      env2[p.name] = callArgs[idx++];
     }
   }
-  return env;
+  return env2;
 };
 const makeSafeFunctionAsync = (fuelRef, outerGlobals) => (...ctorArgs) => {
   const { params, body } = parseFunctionCtor(ctorArgs);
@@ -1501,9 +1547,9 @@ const makeSafeFunctionAsync = (fuelRef, outerGlobals) => (...ctorArgs) => {
     return res.ok;
   };
 };
-const withBuiltins = (env, fuelRef, mode) => {
+const withBuiltins = (env2, fuelRef, mode) => {
   const baseGlobals = {
-    ...env,
+    ...env2,
     Object: SAFE_OBJECT,
     Promise
   };
@@ -1529,9 +1575,9 @@ ${cleanStack}` : prefix;
   }
   return String(err);
 };
-const runWithFuelSharedAsync = async (src, fuelRef, env = {}, fuelRefName = "__fuel") => {
+const runWithFuelSharedAsync = async (src, fuelRef, env2 = {}, fuelRefName = "__fuel") => {
   try {
-    const runtimeEnv = withBuiltins(env, fuelRef, "async");
+    const runtimeEnv = withBuiltins(env2, fuelRef, "async");
     const program = parse(src);
     const protoErrs = validateNoPrototype(program);
     if (protoErrs.length) return { err: "prototype access", fuel: fuelRef.value };
@@ -1548,7 +1594,14 @@ const runWithFuelSharedAsync = async (src, fuelRef, env = {}, fuelRefName = "__f
 const localStoreKey = (fnRef, key) => `${fnRef}|${hashData(key)}`;
 const createLocalExecutor = (options) => {
   const fuelRef = { value: options.fuel ?? 1e5 };
-  const localStoreBacking = /* @__PURE__ */ new Map();
+  const memStore = /* @__PURE__ */ new Map();
+  const ls = (() => {
+    try {
+      return typeof localStorage !== "undefined" ? localStorage : void 0;
+    } catch {
+      return void 0;
+    }
+  })();
   const callLocal = async (fnInput, argInput) => {
     const fnRef = await asRef(fnInput);
     const argRef = await asRef(argInput);
@@ -1557,13 +1610,17 @@ const createLocalExecutor = (options) => {
     const argNote = await deRef(argRef);
     const store = {
       get: (key) => {
-        const skey = localStoreKey(fnRef, key);
-        return localStoreBacking.get(skey);
+        const skey = `hashnotes:store:${localStoreKey(fnRef, key)}`;
+        const raw = ls == null ? void 0 : ls.getItem(skey);
+        if (raw != null) return fromjson(raw);
+        return memStore.get(skey);
       },
       set: (key, value) => {
-        const skey = localStoreKey(fnRef, key);
-        localStoreBacking.set(skey, value);
-        return value;
+        const skey = `hashnotes:store:${localStoreKey(fnRef, key)}`;
+        const v = value;
+        if (ls) ls.setItem(skey, JSON.stringify(v));
+        else memStore.set(skey, v);
+        return v;
       }
     };
     const remote = async (remoteFn, remoteArg) => callNote(remoteFn, remoteArg === void 0 ? null : remoteArg);
@@ -1617,13 +1674,17 @@ const boot = async () => {
     mount.textContent = "Open /<note-hash> to render that note as a view.";
     return;
   }
+  let note = await getNote(ref);
   try {
     const view = await callViewClient(ref, {});
     const el = renderDom(view);
     mount.innerHTML = "";
+    mount.append(renderDom((u) => HTML.pre(note)));
     mount.append(el);
   } catch (err) {
-    mount.innerHTML = `<pre>Failed to render note ${ref} on server ${getServer()}: ${String(err)}</pre>`;
+    mount.append(renderDom((u) => HTML.pre(`failed to render note: ${ref}
+${err}
+${tojson(note)}`)));
   }
 };
 boot().catch((err) => {
@@ -1631,4 +1692,4 @@ boot().catch((err) => {
   const mount = document.getElementById("app") ?? document.body;
   mount.textContent = `App boot failed: ${String(err)}`;
 });
-//# sourceMappingURL=index-CVqA30YG.js.map
+//# sourceMappingURL=index-CgS0KVxC.js.map

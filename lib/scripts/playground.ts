@@ -1,7 +1,7 @@
 import { tojson, type Jsonable } from "@hashnotes/core/notes";
-import { addNote, callNote, getNote, getServer, setServer } from "../src/db.ts";
-import { callNoteClient } from "../src/runtime.ts";
+import { addNote, callNote } from "../src/db.ts";
 import { spawn } from "node:child_process";
+import { callNoteClient } from "../src/runtime.ts";
 
 
 const openInBrowser = (url: string) => {
@@ -32,38 +32,47 @@ const publishView = async (
 };
 
 const main = async () => {
+  // This script requires an accessible SpacetimeDB endpoint.
+  // Configure via `HASHNOTES_SERVER=local` (and run `spacetime start`) or provide a reachable maincloud setup.
+  // If you see `ENOTFOUND maincloud.spacetimedb.com`, your environment has no network/DNS.
 
   const remoteFn = `
-    if (arg.op === "set") store.set("k", arg.value);
-    return store.get("k");
+    let count = store.get("count") || 0  ;
+    count += arg.dif;
+    store.set("count", count);
+    return count;
   `;
 
-  await publishView(
-    `
-      const remoteFn = ${tojson(remoteFn)};
-      await remote(remoteFn, { op: "set", value: 22 });
 
-      return (upper) => {
-        let count = store.get("count") || 0;
-        let label = HTML.p("count: " + count);
-        let btn = HTML.button("increment");
-        const root = HTML.div(
-          HTML.h3("Store View"),
-          label, btn
-        );
-        btn.onEvent = (e) => {
-          if (e.type !== "click") return;
-          count += 1;
-          store.set("count", count);
-          label.textContent = "count: " + count;
-          upper.update(root);
-        };
-        return root;
-      };
-    `,
-    { open: true }
-  );
+	  await publishView(
+	    `
+	      const remoteFn = ${tojson(remoteFn)};
+        let req = dif => remote(remoteFn, {dif})
+
+	      return (upper) => {
+	        let label = HTML.p("count: loading...");
+	        let btn = HTML.button("increment");
+	        const root = HTML.div(
+	          HTML.h3("Store View"),
+	          label, btn
+	        );
+          let update = dif => req(dif).then(c=>{
+            label.textContent = "count: " + c;
+            upper.update(root)
+          })
+          update(1);
+	        btn.onEvent = (e) => {
+	          if (e.type !== "click") return;
+	          update(1);
+	        };
+	        return root;
+	      };
+	    `,
+	    { open: true }
+	  );
 };
+
+
 
 
 main().catch((err) => {

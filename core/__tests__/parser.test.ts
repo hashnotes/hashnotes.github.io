@@ -39,6 +39,8 @@ it("strings", () => {
   testRun('return "hello"', {result: "hello"})
   testRun("return 'world'", {result: "world"})
   testRun('return "a" + "b"', {result: "ab"})
+  testRun('return "a\\n" + "b"', {result: "a\nb"})
+  testRun('return "a\\t" + "b"', {result: "a\tb"})
 })
 
 it("booleans and comparisons", () => {
