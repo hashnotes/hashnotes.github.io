@@ -2,9 +2,25 @@ import { fromjson, hashData, isRef, tojson, type Jsonable, type Ref } from "@has
 
 export type ServerName = "local" | "maincloud";
 type CacheOptions = { skipCache?: boolean };
+
 const DB_NAME = "hashnotes";
 
-let SERVER: ServerName = localStorage.getItem("db_preset") == "local" ? "local" : "maincloud";
+const env = () => (globalThis as any)?.process?.env as Record<string, string | undefined> | undefined;
+const KV = (() => {
+  try { if (typeof localStorage !== "undefined" && localStorage) return localStorage; } catch {}
+  const m = new Map<string, string>();
+  return {
+    getItem: (k: string) => m.get(k) ?? null,
+    setItem: (k: string, v: string) => { m.set(k, v); },
+    removeItem: (k: string) => { m.delete(k); },
+  };
+})();
+
+let SERVER: ServerName = (() => {
+  const e = env();
+  const v = e?.HASHNOTES_SERVER;
+  return v === "local" || v === "maincloud" ? v : (KV.getItem("db_preset") === "local" ? "local" : "maincloud");
+})();
 
 const baseUrl = (): string => ({
   local: "http://localhost:3000",
@@ -14,18 +30,22 @@ const baseUrl = (): string => ({
 const accessToken = async (): Promise<string | null> => {
   let tokenkey = () => `access_token:${SERVER}`;
   let tkey = tokenkey();
-  let token = localStorage.getItem(tkey)
+  const e = env();
+  const envToken = (SERVER === "local" ? e?.HASHNOTES_ACCESS_TOKEN_LOCAL : e?.HASHNOTES_ACCESS_TOKEN_MAINCLOUD) ?? e?.HASHNOTES_ACCESS_TOKEN;
+  if (envToken) return envToken;
+
+  let token = KV.getItem(tkey)
   if (!token){
     token = await fetch(`${baseUrl()}/v1/identity`, { method: "POST", headers: { "Content-Type": "application/json" } })
     .then(r=>r.json()).then(j=>j.token || null)
     if (tkey != tokenkey()) return accessToken();
-    if (token) localStorage.setItem(tkey, token)
+    if (token) KV.setItem(tkey, token)
   }
   return token
 };
 
 export const setServer = (value: ServerName) => {
-  localStorage.setItem("db_preset", value);
+  KV.setItem("db_preset", value);
   SERVER = value;
   console.log("connect to", SERVER)
 };

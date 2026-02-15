@@ -1,6 +1,6 @@
-import { callViewClient, renderDom } from "@hashnotes/lib";
-import { isRef, type Ref } from "@hashnotes/core/notes";
-import { getServer } from "../../lib/src/db";
+import { callViewClient, HTML, renderDom } from "@hashnotes/lib";
+import { isRef, tojson, type Ref } from "@hashnotes/core/notes";
+import { getNote, getServer } from "../../lib/src/db";
 
 const parseRefFromPath = (pathname: string): Ref | null => {
   const segment = pathname.replace(/^\/+/, "").split("/")[0];
@@ -22,13 +22,16 @@ export const boot = async () => {
     mount.textContent = "Open /<note-hash> to render that note as a view.";
     return;
   }
+  let note = await getNote(ref);
 
   try {
     const view = await callViewClient(ref, {});
+
     const el = renderDom(view);
     mount.innerHTML = "";
+    mount.append(renderDom(u=>HTML.pre(note as string)))  
     mount.append(el);
   } catch (err) {
-    mount.innerHTML = `<pre>Failed to render note ${ref} on server ${getServer()}: ${String(err)}</pre>`;
+    mount.append(renderDom(u=>HTML.pre(`failed to render note: ${ref}\n${err}\n${tojson(note)}`)))
   }
 };

@@ -15,9 +15,10 @@ type LocalExecutor = (fn: Ref | Jsonable, arg: Ref | Jsonable) => Promise<unknow
 
 const createLocalExecutor = (options: ClientFuelOptions): LocalExecutor => {
   const fuelRef = { value: options.fuel ?? 100000 };
-  // Local runtime store is scoped to a single top-level client execution.
-  // Each called function gets isolated space via fnRef prefix.
-  const localStoreBacking = new Map<string, Jsonable>();
+  const memStore = new Map<string, Jsonable>();
+  const ls = (() => {
+    try { return typeof localStorage !== "undefined" ? localStorage : undefined; } catch { return undefined; }
+  })();
 
   const callLocal: LocalExecutor = async (fnInput: Ref | Jsonable, argInput: Ref | Jsonable): Promise<unknown> => {
     const fnRef = await asRef(fnInput);
@@ -29,13 +30,17 @@ const createLocalExecutor = (options: ClientFuelOptions): LocalExecutor => {
 
     const store = {
       get: (key: Ref | Jsonable): Jsonable | undefined => {
-        const skey = localStoreKey(fnRef, key);
-        return localStoreBacking.get(skey);
+        const skey = `hashnotes:store:${localStoreKey(fnRef, key)}`;
+        const raw = ls?.getItem(skey);
+        if (raw != null) return fromjson(raw) as Jsonable;
+        return memStore.get(skey);
       },
       set: (key: Ref | Jsonable, value: Ref | Jsonable): Jsonable => {
-        const skey = localStoreKey(fnRef, key);
-        localStoreBacking.set(skey, value as Jsonable);
-        return value as Jsonable;
+        const skey = `hashnotes:store:${localStoreKey(fnRef, key)}`;
+        const v = value as Jsonable;
+        if (ls) ls.setItem(skey, JSON.stringify(v));
+        else memStore.set(skey, v);
+        return v;
       },
     };
 
