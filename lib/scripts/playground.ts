@@ -1,8 +1,6 @@
-import { tojson, type Jsonable } from "@hashnotes/core/notes";
-import { addNote, callNote } from "../src/db.ts";
+import { addNote } from "../src/db.ts";
 import { spawn } from "node:child_process";
-import { callNoteClient } from "../src/runtime.ts";
-
+import { noteBody, note } from "./note-fn.ts";
 
 const openInBrowser = (url: string) => {
   const platform = process.platform;
@@ -32,42 +30,43 @@ const publishView = async (
 };
 
 const main = async () => {
-  const remoteFn = `
-    let count = store.get("count") || 0  ;
+  // remoteFn exists here as a real typed variable — TS is happy.
+  // note() will prepend `const remoteFn = "..."` in the output string,
+  // shadowing this closure variable with the actual JSON value.
+  const remoteFn = noteBody(function () {
+    let count = store.get("count") || 0;
     count += arg.dif;
     store.set("count", count);
     return count;
-  `;
+  });
 
-  await publishView(`
-  const remoteFn = ${tojson(remoteFn)};
-
-  return (upper) => {
-    let label = HTML.p("count: loading...");
-    let root;
-    let update = dif => remote(remoteFn, {dif}).then(c=>{
-      label.textContent = "count: " + c;
-      upper.update(root)
-    })
-    root = HTML.div(
-      HTML.h3("Store View"),
-      label,
-      HTML.button("increment",
-        {onclick: e=>{
-          if (e.type !== "click") return;
-          update(1);
-        }}
-      )
-    );
-    update(1);
-    return root;
-  };`,
-	    { open: true }
-	  );
+  await publishView(
+    note(function () {
+      return (upper: UPPER) => {
+        let label = HTML.p("count: loading...");
+        let root: VDom;
+        let update = (dif: number) =>
+          remote(remoteFn, { dif }).then((c) => {
+            label.textContent = "count: " + c;
+            upper.update(root);
+          });
+        root = HTML.div(
+          HTML.h3("Store View"),
+          label,
+          HTML.button("increment", {
+            onclick: (e: DomEvent) => {
+              if (e.type !== "click") return;
+              update(1);
+            },
+          })
+        );
+        update(1);
+        return root;
+      };
+    }, { remoteFn }),
+    { open: true }
+  );
 };
-
-
-
 
 main().catch((err) => {
   console.error(err);
