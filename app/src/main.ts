@@ -14,7 +14,7 @@ const parseRefFromPath = (pathname: string): Ref | null => {
   return null;
 };
 
-const LIVE_HASH_URL = "http://localhost:4321/hash";
+const DEV_URL = "http://localhost:4321";
 
 const renderRef = async (mount: HTMLElement, ref: Ref) => {
   let note = await getNote(ref);
@@ -30,27 +30,62 @@ const renderRef = async (mount: HTMLElement, ref: Ref) => {
   }
 };
 
+type HistoryEntry = { tsHash: string; jsHash: string; exportName: string };
+
 const bootLive = async (mount: HTMLElement) => {
   mount.innerHTML = "";
-  mount.textContent = "Connecting to live server...";
+  mount.textContent = "Connecting to dev server...";
 
-  let currentHash = "";
+  let lastJson = "";
+
+  const el = (tag: string, text?: string): HTMLElement => {
+    const e = document.createElement(tag);
+    if (text) e.textContent = text;
+    return e;
+  };
 
   const poll = async () => {
     try {
-      const res = await fetch(LIVE_HASH_URL);
-      const hash = (await res.text()).trim() as Ref;
-      if (hash && hash !== currentHash) {
-        currentHash = hash;
-        await renderRef(mount, hash);
+      const res = await fetch(`${DEV_URL}/history`);
+      const json = await res.text();
+      if (json === lastJson) return;
+      lastJson = json;
+
+      const history: HistoryEntry[] = JSON.parse(json);
+      mount.innerHTML = "";
+
+      mount.append(el("h2", "hashnotes dev"));
+      mount.append(el("p", `${history.length} compiled notes (${getServer()})`));
+
+      for (const entry of history) {
+        const row = el("div");
+        const isView = entry.exportName === "view" || entry.exportName === "default";
+
+        if (isView) {
+          const a = document.createElement("a");
+          a.href = `/${entry.jsHash.slice(1)}`;
+          a.textContent = entry.exportName;
+          row.append(a);
+        } else {
+          const span = el("span", entry.exportName);
+          span.style.opacity = "0.5";
+          row.append(span);
+        }
+
+        const hash = el("span", ` ${entry.jsHash.slice(0, 14)}…`);
+        hash.style.opacity = "0.4";
+        hash.style.fontSize = "0.85em";
+        row.append(hash);
+
+        mount.append(row);
       }
     } catch {
-      // live server not running yet — keep polling
+      // dev server not running — keep polling
     }
   };
 
   await poll();
-  setInterval(poll, 1000);
+  setInterval(poll, 2000);
 };
 
 export const boot = async () => {

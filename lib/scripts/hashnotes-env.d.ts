@@ -30,10 +30,10 @@ declare const store: {
   set(key: Ref | Jsonable, value: Ref | Jsonable): Jsonable;
 };
 
-declare const remote: (
-  fn: Ref | Jsonable,
-  arg?: Ref | Jsonable
-) => Promise<Jsonable>;
+declare const remote: <X,Y extends Jsonable> (
+  fn: (x:X) => Y,
+  arg?: X,
+) => Promise<Y>;
 
 declare const call: (
   fn: Ref | Jsonable,
@@ -41,6 +41,9 @@ declare const call: (
 ) => Promise<unknown>;
 
 declare const callNote: typeof call;
+
+declare const use: (ref: Ref) => Promise<unknown>;
+declare const getNoteSync: (ref: Ref) => unknown;
 
 declare const addNote: (data: Jsonable) => Promise<Ref>;
 declare const getNote: (hash: Ref) => Promise<Jsonable>;

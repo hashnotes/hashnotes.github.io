@@ -7,12 +7,11 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "node --test --experimental-strip-types __tests__/dag.test.ts __tests__/localstore.test.ts",
+    "test": "node --test --experimental-strip-types __tests__/dag.test.ts __tests__/localstore.test.ts __tests__/compile.test.ts",
     "test:backend": "node --test --experimental-strip-types __tests__/backend.test.ts",
     "script": "node --no-warnings=ExperimentalWarning --experimental-strip-types",
     "script:smoke": "npm run script -- scripts/smoke.ts",
-    "script:play": "npm run script -- scripts/playground.ts",
-    "live": "npm run script -- scripts/live.ts",
+    "dev": "npm run script -- scripts/dev.ts",
     "check": "tsc --noEmit"
   },
   "dependencies": {
