@@ -991,6 +991,7 @@ const parse = (src) => {
               params.push(parsePattern());
               if (!match("punct", ",")) break;
               next();
+              if (match("punct", ")")) break;
             } while (true);
           }
         } catch {
@@ -1027,6 +1028,7 @@ const parse = (src) => {
             params.push(parsePattern());
             if (!match("punct", ",")) break;
             next();
+            if (match("punct", ")")) break;
           } while (true);
         }
       } catch {
@@ -1081,6 +1083,7 @@ const parse = (src) => {
         }
         if (!match("punct", ",")) break;
         next();
+        if (match("punct", "]")) break;
       } while (true);
     }
     eat("punct", "]");
@@ -1096,6 +1099,7 @@ const parse = (src) => {
           properties.push({ type: "SpreadElement", argument: parseExpression() });
           if (!match("punct", ",")) break;
           next();
+          if (match("punct", "}")) break;
           continue;
         }
         let key;
@@ -1116,6 +1120,7 @@ const parse = (src) => {
         properties.push({ type: "Property", key, value, shorthand });
         if (!match("punct", ",")) break;
         next();
+        if (match("punct", "}")) break;
       } while (true);
     }
     eat("punct", "}");
@@ -1134,6 +1139,7 @@ const parse = (src) => {
         }
         if (!match("punct", ",")) break;
         next();
+        if (match("punct", ")")) break;
       } while (true);
     }
     eat("punct", ")");
@@ -1156,6 +1162,7 @@ const parse = (src) => {
           elements2.push(parsePattern());
           if (!match("punct", ",")) break;
           next();
+          if (match("punct", "]")) break;
         } while (true);
       }
       eat("punct", "]");
@@ -1171,6 +1178,7 @@ const parse = (src) => {
             properties.push({ type: "RestElement", argument: parsePattern() });
             if (!match("punct", ",")) break;
             next();
+            if (match("punct", "}")) break;
             continue;
           }
           let key;
@@ -1191,6 +1199,7 @@ const parse = (src) => {
           properties.push({ type: "Property", key, value, shorthand });
           if (!match("punct", ",")) break;
           next();
+          if (match("punct", "}")) break;
         } while (true);
       }
       eat("punct", "}");
@@ -1666,14 +1675,8 @@ const parseRefFromPath = (pathname) => {
   if (/^[a-f0-9]{32}$/i.test(decoded)) return `#${decoded}`;
   return null;
 };
-const boot = async () => {
-  const mount = document.getElementById("app") ?? document.body;
-  const ref = parseRefFromPath(window.location.pathname);
-  if (!ref) {
-    mount.innerHTML = "";
-    mount.textContent = "Open /<note-hash> to render that note as a view.";
-    return;
-  }
+const LIVE_HASH_URL = "http://localhost:4321/hash";
+const renderRef = async (mount, ref) => {
   let note = await getNote(ref);
   try {
     const view = await callViewClient(ref, {});
@@ -1682,14 +1685,46 @@ const boot = async () => {
     mount.append(renderDom((u) => HTML.pre(note)));
     mount.append(el);
   } catch (err) {
+    mount.innerHTML = "";
     mount.append(renderDom((u) => HTML.pre(`failed to render note: ${ref}
 ${err}
 ${tojson(note)}`)));
   }
+};
+const bootLive = async (mount) => {
+  mount.innerHTML = "";
+  mount.textContent = "Connecting to live server...";
+  let currentHash = "";
+  const poll = async () => {
+    try {
+      const res = await fetch(LIVE_HASH_URL);
+      const hash = (await res.text()).trim();
+      if (hash && hash !== currentHash) {
+        currentHash = hash;
+        await renderRef(mount, hash);
+      }
+    } catch {
+    }
+  };
+  await poll();
+  setInterval(poll, 1e3);
+};
+const boot = async () => {
+  const mount = document.getElementById("app") ?? document.body;
+  if (window.location.pathname.replace(/\/+$/, "") === "/live") {
+    return bootLive(mount);
+  }
+  const ref = parseRefFromPath(window.location.pathname);
+  if (!ref) {
+    mount.innerHTML = "";
+    mount.textContent = "Open /<note-hash> to render that note as a view.";
+    return;
+  }
+  await renderRef(mount, ref);
 };
 boot().catch((err) => {
   console.error(err);
   const mount = document.getElementById("app") ?? document.body;
   mount.textContent = `App boot failed: ${String(err)}`;
 });
-//# sourceMappingURL=index-CgS0KVxC.js.map
+//# sourceMappingURL=index-DUcK6Pyy.js.map
