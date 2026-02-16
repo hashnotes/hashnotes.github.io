@@ -734,6 +734,7 @@ export const parse = (src: string): Program => {
               params.push(parsePattern());
               if (!match("punct", ",")) break;
               next();
+              if (match("punct", ")")) break; // trailing comma
             } while (true);
           }
         } catch {
@@ -771,6 +772,7 @@ export const parse = (src: string): Program => {
             params.push(parsePattern());
             if (!match("punct", ",")) break;
             next();
+            if (match("punct", ")")) break; // trailing comma
           } while (true);
         }
       } catch {
@@ -818,6 +820,7 @@ export const parse = (src: string): Program => {
         }
         if (!match("punct", ",")) break;
         next();
+        if (match("punct", "]")) break; // trailing comma
       } while (true);
     }
     eat("punct", "]");
@@ -834,6 +837,7 @@ export const parse = (src: string): Program => {
           properties.push({ type: "SpreadElement", argument: parseExpression() });
           if (!match("punct", ",")) break;
           next();
+          if (match("punct", "}")) break; // trailing comma
           continue;
         }
         let key: Identifier | Literal;
@@ -854,6 +858,7 @@ export const parse = (src: string): Program => {
         properties.push({ type: "Property", key, value, shorthand });
         if (!match("punct", ",")) break;
         next();
+        if (match("punct", "}")) break; // trailing comma
       } while (true);
     }
     eat("punct", "}");
@@ -873,6 +878,7 @@ export const parse = (src: string): Program => {
         }
         if (!match("punct", ",")) break;
         next();
+        if (match("punct", ")")) break; // trailing comma
       } while (true);
     }
     eat("punct", ")");
@@ -897,6 +903,7 @@ export const parse = (src: string): Program => {
           elements.push(parsePattern());
           if (!match("punct", ",")) break;
           next();
+          if (match("punct", "]")) break; // trailing comma
         } while (true);
       }
       eat("punct", "]");
@@ -912,6 +919,7 @@ export const parse = (src: string): Program => {
             properties.push({ type: "RestElement", argument: parsePattern() });
             if (!match("punct", ",")) break;
             next();
+            if (match("punct", "}")) break; // trailing comma
             continue;
           }
           let key: Identifier | Literal;
@@ -932,6 +940,7 @@ export const parse = (src: string): Program => {
           properties.push({ type: "Property", key, value, shorthand });
           if (!match("punct", ",")) break;
           next();
+          if (match("punct", "}")) break; // trailing comma
         } while (true);
       }
       eat("punct", "}");
