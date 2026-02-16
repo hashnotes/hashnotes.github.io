@@ -16,7 +16,7 @@ export const view = (upper: UPPER) => {
   inc(0);
 
   return HTML.div(
-    HTML.h2("counter example"),
+    HTML.h2("counter example**"),
     label,
     HTML.button("+1", { onclick: () => inc(1) }),
     HTML.button("-1", { onclick: () => inc(-1) })

@@ -28,40 +28,42 @@ describe("compileModule", () => {
     assert(out.includes(`getNoteSync("#setup")`), out);
   });
 
-  it("strips export and returns single export name", () => {
+  it("inlines single exported function body", () => {
     const src = `export const view = (upper) => HTML.div("hello");`;
     const out = compileModule(src);
     assert(!out.includes("export"), out);
-    assert(out.includes("const view ="), out);
-    assert(out.includes("return view;"), out);
+    assert(out.includes("const upper = arg;"), "should bind param from arg: " + out);
+    assert(out.includes('return HTML.div("hello");'), "should inline body: " + out);
+    assert(!out.includes("const view ="), "should not wrap in variable: " + out);
   });
 
-  it("handles export default expression", () => {
+  it("inlines export default function body", () => {
     const src = `export default (x) => x + 1;`;
     const out = compileModule(src);
-    assert(out.includes("const __default ="), out);
-    assert(out.includes("return __default;"), out);
+    assert(out.includes("const x = arg;"), "should bind param: " + out);
+    assert(out.includes("return (x + 1);"), "should inline body: " + out);
   });
 
-  it("handles re-export from another module", () => {
+  it("throws on re-export (not an arrow)", () => {
     const src = `export { foo } from "#bbb";`;
-    const out = compileModule(src);
-    assert(out.includes(`getNoteSync("#bbb")`), out);
-    assert(out.includes("return foo;"), out);
+    let threw = false;
+    try { compileModule(src); } catch { threw = true; }
+    assert(threw, "should throw on re-export");
   });
 
-  it("handles local export { name }", () => {
+  it("throws on export { name } (not an arrow)", () => {
     const src = `const x = (a) => a + 1;\nexport { x };`;
-    const out = compileModule(src);
-    assert(!out.includes("export"), "should strip export");
-    assert(out.includes("return x;"), out);
+    let threw = false;
+    try { compileModule(src); } catch { threw = true; }
+    assert(threw, "should throw on export { name }");
   });
 
-  it("strips TypeScript types", () => {
+  it("strips TypeScript types and inlines body", () => {
     const src = `export const greet = (name: string): string => name + " world";`;
     const out = compileModule(src);
     assert(!out.includes(": string"), "types should be stripped: " + out);
-    assert(out.includes("return greet;"), out);
+    assert(out.includes("const name = arg;"), "should bind param: " + out);
+    assert(out.includes('return (name + " world");'), "should inline body: " + out);
   });
 
   it("uses resolve function for import specifiers", () => {
@@ -72,14 +74,15 @@ describe("compileModule", () => {
     assert(out.includes(`getNoteSync("#js_compiled")`), out);
   });
 
-  it("handles mixed import and export", () => {
+  it("handles mixed import and export with inlined body", () => {
     const src = `
 import { helper } from "#dep";
 export const greet = (name) => helper(name);
 `;
     const out = compileModule(src);
     assert(out.includes(`getNoteSync("#dep")`), out);
-    assert(out.includes("return greet;"), out);
+    assert(out.includes("const name = arg;"), "should bind param: " + out);
+    assert(out.includes("return helper(name);"), "should inline body: " + out);
   });
 
   it("produces no return for modules with no exports", () => {

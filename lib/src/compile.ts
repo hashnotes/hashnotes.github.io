@@ -328,44 +328,53 @@ export const compileModule = (
     }
   }
 
-  // 6. Walk non-import statements, emit JS
-  const exportNames: string[] = [];
+  // 6. Walk non-import statements, find the single export arrow fn, emit others
+  let exportArrow: N | null = null;
 
   for (const node of nonImportNodes) {
     switch (node.type) {
-      case "ExportNamedDeclaration":
-        emitNamedExport(node, lines, exportNames, importHashes, resolve);
+      case "ExportNamedDeclaration": {
+        const arrow = getExportedArrow(node);
+        if (!arrow) throw new Error("export must be a single arrow function");
+        if (exportArrow) throw new Error("only one export per module");
+        exportArrow = arrow;
         break;
-
-      case "ExportDefaultDeclaration":
-        emitDefaultExport(node, lines, exportNames, importHashes);
+      }
+      case "ExportDefaultDeclaration": {
+        const decl = node.declaration as N;
+        if (decl.type !== "ArrowFunctionExpression") throw new Error("export default must be an arrow function");
+        if (exportArrow) throw new Error("only one export per module");
+        exportArrow = decl;
         break;
-
+      }
       case "ExportAllDeclaration":
         throw new Error("export * from '...' is not supported");
-
       default:
         lines.push(emitStmt(node, importHashes));
         break;
     }
   }
 
-  // 7. Emit __deps preamble — unique hashes of all imports (including side-effect)
+  // 7. Inline the arrow function body
+  if (exportArrow) {
+    const params = exportArrow.params as N[];
+    if (params.length > 1) throw new Error("exported arrow must have 0 or 1 param");
+    if (params.length === 1) {
+      const p = emitPattern(params[0]);
+      if (p !== "arg") lines.push("const " + p + " = arg;");
+    }
+    if (exportArrow.body.type === "BlockStatement") {
+      for (const s of exportArrow.body.body as N[]) lines.push(emitStmt(s, importHashes));
+    } else {
+      lines.push("return " + emit(exportArrow.body, importHashes) + ";");
+    }
+  }
+
+  // 8. Emit __deps preamble — unique hashes of all imports (including side-effect)
   const depHashes = [...new Set([...sideEffectHashes, ...importHashes.values()])];
   if (depHashes.length > 0) {
     const depsLine = "const __deps = [" + depHashes.map(h => JSON.stringify(h)).join(", ") + "];";
     lines.unshift(depsLine);
-  }
-
-  // 8. Return the exported function
-  if (exportNames.length === 1) {
-    const name = exportNames[0] === "default" ? "__default" : exportNames[0];
-    lines.push("return " + name + ";");
-  } else if (exportNames.length > 1) {
-    const parts = exportNames.map(n =>
-      n === "default" ? "default: __default" : n
-    );
-    lines.push("return {" + parts.join(", ") + "};");
   }
 
   return lines.join("\n") + "\n";
@@ -531,98 +540,16 @@ const findLocalUses = (nodes: N[], importHashes: Map<string, string>): Set<strin
 };
 
 // ---------------------------------------------------------------------------
-// Export emission
+// Export helpers
 // ---------------------------------------------------------------------------
 
-const emitNamedExport = (
-  node: N,
-  lines: string[],
-  exportNames: string[],
-  importHashes: Map<string, string>,
-  resolve?: (s: string) => ResolveResult,
-) => {
+/** Extract arrow function from `export const name = (...) => ...` */
+const getExportedArrow = (node: N): N | null => {
   const decl = node.declaration as N | null;
-
-  if (decl) {
-    if (decl.type === "VariableDeclaration") {
-      for (const d of decl.declarations as N[]) {
-        const names = collectPatternNames(d.id);
-        exportNames.push(...names);
-        const id = emitPattern(d.id);
-        lines.push(decl.kind + " " + id + (d.init ? " = " + emit(d.init, importHashes) : "") + ";");
-      }
-    } else if (decl.type === "FunctionDeclaration") {
-      exportNames.push(decl.id.name);
-      lines.push(emitStmt(decl, importHashes));
-    }
-    return;
-  }
-
-  // export { a, b } or export { a } from "#hash"
-  const specifiers = node.specifiers as N[];
-  const source = node.source as N | null;
-
-  if (source) {
-    const raw: string = source.value;
-    const rr = resolve ? resolve(raw) : raw;
-    const hash = resolveHash(rr);
-    const bindings = specifiers.map((s: N) => {
-      const exported: string = s.exported.name;
-      exportNames.push(exported);
-      return exported;
-    });
-    // Re-export from another module — fetch it
-    if (bindings.length === 1) {
-      lines.push(`const ${bindings[0]} = getNoteSync(${JSON.stringify(hash)});`);
-    } else {
-      const parts = specifiers.map((s: N) => {
-        const local: string = s.local.name;
-        const exported: string = s.exported.name;
-        return local === exported ? local : local + ": " + exported;
-      });
-      lines.push(`const {${parts.join(", ")}} = getNoteSync(${JSON.stringify(hash)});`);
-    }
-  } else {
-    // export { a, b } — just collect names
-    for (const s of specifiers) {
-      exportNames.push(s.exported.name);
-    }
-  }
+  if (!decl || decl.type !== "VariableDeclaration") return null;
+  const inits = decl.declarations as N[];
+  if (inits.length !== 1 || !inits[0].init) return null;
+  const init = inits[0].init as N;
+  return init.type === "ArrowFunctionExpression" ? init : null;
 };
 
-const emitDefaultExport = (
-  node: N,
-  lines: string[],
-  exportNames: string[],
-  importHashes: Map<string, string>,
-) => {
-  exportNames.push("default");
-  const decl = node.declaration as N;
-  lines.push("const __default = " + emit(decl, importHashes) + ";");
-};
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-const collectPatternNames = (node: N): string[] => {
-  const names: string[] = [];
-  const walk = (n: N) => {
-    switch (n.type) {
-      case "Identifier": names.push(n.name); break;
-      case "ObjectPattern":
-        for (const p of n.properties as N[]) {
-          if (p.type === "RestElement") walk(p.argument);
-          else walk(p.value);
-        }
-        break;
-      case "ArrayPattern":
-        for (const e of n.elements as (N | null)[]) if (e) walk(e);
-        break;
-      case "RestElement": walk(n.argument); break;
-      case "AssignmentPattern": walk(n.left); break;
-    }
-  };
-  walk(node);
-  return names;
-};

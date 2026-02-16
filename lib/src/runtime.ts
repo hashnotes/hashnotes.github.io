@@ -1,4 +1,4 @@
-import { runWithFuelSharedAsync } from "@hashnotes/core/codegen";
+import { runWithFuelShared, runWithFuelSharedAsync } from "@hashnotes/core/codegen";
 import { fromjson, hashData, type Jsonable, type Ref } from "@hashnotes/core/notes";
 import { addNote, asRef, callNote, deRef, getNote } from "./db.ts";
 import { HTML, type UPPER, type VDom } from "./views.ts";
@@ -30,24 +30,16 @@ const createLocalExecutor = (options: ClientFuelOptions): LocalExecutor => {
     try { return typeof localStorage !== "undefined" ? localStorage : undefined; } catch { return undefined; }
   })();
 
-  // Cache: hash → executed result (the function the note exports)
-  const noteResultCache = new Map<string, unknown>();
+  // Cache: hash → source string (pre-fetched, not executed)
+  const sourceCache = new Map<string, string>();
 
-  /**
-   * Pre-load a note and all its deps into the cache.
-   * Recursively walks __deps, executes leaves first, so getNoteSync always hits.
-   */
-  const preload = async (ref: string, env: Record<string, unknown>): Promise<void> => {
-    if (noteResultCache.has(ref)) return;
+  /** Recursively fetch dep sources into sourceCache (no execution). */
+  const prefetch = async (ref: string): Promise<void> => {
+    if (sourceCache.has(ref)) return;
     const src = await deRef(ref as Ref);
-    if (typeof src !== "string") throw new Error("preload: note must be a string");
-    // Recursively preload deps first
-    const deps = parseDeps(src);
-    for (const dep of deps) await preload(dep, env);
-    // Execute the note — its getNoteSync calls will hit the cache
-    const res = await runWithFuelSharedAsync(src, fuelRef, env);
-    if ("err" in res) throw new Error(res.err);
-    noteResultCache.set(ref, res.ok);
+    if (typeof src !== "string") throw new Error("prefetch: note must be a string");
+    sourceCache.set(ref, src);
+    for (const dep of parseDeps(src)) await prefetch(dep);
   };
 
   const callLocal: LocalExecutor = async (fnInput: Ref | Jsonable, argInput: Ref | Jsonable): Promise<unknown> => {
@@ -77,20 +69,11 @@ const createLocalExecutor = (options: ClientFuelOptions): LocalExecutor => {
     const remote = async (remoteFn: Ref | Jsonable, remoteArg?: Ref | Jsonable): Promise<Jsonable> =>
       callNote(remoteFn, remoteArg === undefined ? null : remoteArg);
 
-    const use = async (ref: Ref): Promise<unknown> => {
-      if (noteResultCache.has(ref)) return noteResultCache.get(ref);
-      const src = await deRef(ref);
-      if (typeof src !== "string") throw new Error("use: note must resolve to a string");
-      const res = await runWithFuelSharedAsync(src, fuelRef, env);
-      if ("err" in res) throw new Error(res.err);
-      noteResultCache.set(ref, res.ok);
-      return res.ok;
-    };
-
-    /** Synchronous cached lookup — deps are guaranteed pre-loaded. */
-    const getNoteSync = (ref: string): unknown => {
-      if (noteResultCache.has(ref)) return noteResultCache.get(ref);
-      throw new Error(`getNoteSync: note ${ref} not in cache`);
+    /** Synchronous cached lookup — returns source string. */
+    const getNoteSync = (ref: string): string => {
+      const src = sourceCache.get(ref);
+      if (src === undefined) throw new Error(`getNoteSync: note ${ref} not in cache`);
+      return src;
     };
 
     const env: Record<string, unknown> = {
@@ -101,7 +84,6 @@ const createLocalExecutor = (options: ClientFuelOptions): LocalExecutor => {
       callNote: callLocal,
       remote,
       store,
-      use,
       getNoteSync,
       addNote,
       getNote,
@@ -112,9 +94,9 @@ const createLocalExecutor = (options: ClientFuelOptions): LocalExecutor => {
       HTML,
     };
 
-    // Pre-load all deps before executing
+    // Pre-fetch all dep sources before executing
     const deps = parseDeps(fnNote);
-    for (const dep of deps) await preload(dep, env);
+    for (const dep of deps) await prefetch(dep);
 
     const result = await runWithFuelSharedAsync(
       fnNote,
@@ -140,18 +122,46 @@ export const callNoteClient = async (
 
 export const callViewClient = async (
   fn: Ref | Jsonable,
-  arg?: Ref | Jsonable,
+  _arg?: Ref | Jsonable,
   options: ClientFuelOptions = {}
 ): Promise<(upper: UPPER) => VDom> => {
-  const callLocal = createLocalExecutor(options);
-  const result = await callLocal(fn, arg === undefined ? null : arg);
-  // Support raw view fn, {view: fn}, or {default: fn}
-  const view = typeof result === "function" ? result
-    : result && typeof result === "object" && typeof (result as any).view === "function" ? (result as any).view
-    : result && typeof result === "object" && typeof (result as any).default === "function" ? (result as any).default
-    : null;
-  if (!view) {
-    throw new Error("view note must return (upper) => VDom, or {view: fn}, or {default: fn}");
-  }
-  return view as (upper: UPPER) => VDom;
+  // View notes have inlined bodies — `arg` is the upper object.
+  // Pre-fetch dep sources async, then return a sync wrapper.
+  const fuelRef = { value: options.fuel ?? 100000 };
+  const sourceCache = new Map<string, string>();
+
+  const fnRef = await asRef(fn);
+  const fnNote = await deRef(fnRef);
+  if (typeof fnNote !== "string") throw new Error("view note must resolve to a string");
+
+  /** Recursively fetch dep sources into sourceCache (no execution). */
+  const prefetch = async (ref: string): Promise<void> => {
+    if (sourceCache.has(ref)) return;
+    const src = await deRef(ref as Ref);
+    if (typeof src !== "string") throw new Error("prefetch: note must be a string");
+    sourceCache.set(ref, src);
+    for (const dep of parseDeps(src)) await prefetch(dep);
+  };
+  for (const dep of parseDeps(fnNote)) await prefetch(dep);
+
+  const getNoteSync = (ref: string): string => {
+    const src = sourceCache.get(ref);
+    if (src === undefined) throw new Error(`getNoteSync: note ${ref} not in cache`);
+    return src;
+  };
+
+  const remote = async (remoteFn: Ref | Jsonable, remoteArg?: Ref | Jsonable): Promise<Jsonable> =>
+    callNote(remoteFn, remoteArg === undefined ? null : remoteArg);
+
+  const baseEnv: Record<string, unknown> = {
+    ...(options.env ?? {}),
+    remote, getNoteSync, addNote, getNote, asRef, deref: deRef, hashData, fromjson, HTML,
+  };
+
+  // Inlined body — arg is the upper object.
+  return (upper: UPPER): VDom => {
+    const result = runWithFuelShared(fnNote, fuelRef, { ...baseEnv, arg: upper });
+    if ("err" in result) throw new Error(result.err);
+    return result.ok as VDom;
+  };
 };

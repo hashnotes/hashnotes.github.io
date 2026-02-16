@@ -88,26 +88,25 @@ it("client fuel runner: remote cannot use local store space", async () => {
 });
 
 it("client view runner: returns (upper)=>VDom and can call upper.update", async () => {
+  // New inlined format: arg IS the upper object
   const fn = `
-    return (upper) => {
-      const root = HTML.div(
-        HTML.p("count: " + arg.count),
-        HTML.button("inc")
-      );
-      const label = root.children[0];
-      const inc = root.children[1];
-      inc.onEvent = (e) => {
-        if (e.type !== "click") return;
-        arg.count += 1;
-        label.textContent = "count: " + arg.count;
-        upper.update(root);
-      };
-      return root;
+    const upper = arg;
+    const root = HTML.div(
+      HTML.p("hello"),
+      HTML.button("inc")
+    );
+    const label = root.children[0];
+    const inc = root.children[1];
+    inc.onEvent = (e) => {
+      if (e.type !== "click") return;
+      label.textContent = "clicked";
+      upper.update(root);
     };
+    return root;
   `;
 
   const updates: string[] = [];
-  const view = await callViewClient(fn, { count: 1 });
+  const view = await callViewClient(fn);
   const root = view({
     add: () => {},
     del: () => {},
@@ -116,6 +115,6 @@ it("client view runner: returns (upper)=>VDom and can call upper.update", async 
 
   assertEq(root.tag, "div");
   root.children[1].onEvent?.({ type: "click", target: root.children[1] });
-  assertEq(root.children[0].textContent, "count: 2");
+  assertEq(root.children[0].textContent, "clicked");
   assertEq(updates.length, 1);
 });

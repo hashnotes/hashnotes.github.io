@@ -117,11 +117,9 @@ spacetimedb.procedure(
         fuelRef,
         { arg: argNote, argRef, call: callNote, callNote, store, addNote, getNote, asRef, deref, hashData, fromjson }
       );
+      if ("ok" in result) return result.ok as Jsonable;
       if ("err" in result) throw new SenderError(`error executing note: ${result.err}`);
-      if (!("ok" in result)) throw new SenderError("unknown error executing note");
-      // Compiled modules return a function — call it with the arg
-      const val = typeof result.ok === "function" ? result.ok(argNote) : result.ok;
-      return val as Jsonable;
+      throw new SenderError("unknown error executing note");
     };
 
 
