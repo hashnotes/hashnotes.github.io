@@ -1,143 +1,4 @@
-type TokenType =
-  | "number"
-  | "string"
-  | "identifier"
-  | "keyword"
-  | "operator"
-  | "punct"
-  | "eof";
-
-type Token = { type: TokenType; value: string; pos: number };
-
-const keywords = new Set([
-  "if",
-  "else",
-  "return",
-  "await",
-  "typeof",
-  "let",
-  "const",
-  "for",
-  "while",
-  "in",
-  "of",
-  "break",
-  "continue",
-  "true",
-  "false",
-  "null",
-]);
-
-const isIdentStart = (c: string) => /[A-Za-z_$]/.test(c);
-const isIdentPart = (c: string) => /[A-Za-z0-9_$]/.test(c);
-const isDigit = (c: string) => /[0-9]/.test(c);
-
-const tokenize = (src: string): Token[] => {
-  const tokens: Token[] = [];
-  let i = 0;
-  const push = (type: TokenType, value: string, pos: number) => tokens.push({ type, value, pos });
-  const peek = () => src[i];
-  const next = () => src[i++];
-
-  while (i < src.length) {
-    const c = peek();
-    if (c === " " || c === "\n" || c === "\r" || c === "\t") {
-      i++;
-      continue;
-    }
-    if (c === "/" && src[i + 1] === "/") {
-      i += 2;
-      while (i < src.length && src[i] !== "\n") i++;
-      continue;
-    }
-    if (c === "/" && src[i + 1] === "*") {
-      i += 2;
-      while (i < src.length && !(src[i] === "*" && src[i + 1] === "/")) i++;
-      i += 2;
-      continue;
-    }
-    if (c === "'" || c === "\"") {
-      const quote = next();
-      let out = "";
-      const start = i - 1;
-      while (i < src.length) {
-        const ch = next();
-        if (ch === "\\") {
-          const esc = next();
-          if (esc === "n") out += "\n";
-          else if (esc === "r") out += "\r";
-          else if (esc === "t") out += "\t";
-          else if (esc === "b") out += "\b";
-          else if (esc === "f") out += "\f";
-          else if (esc === "0") out += "\0";
-          else if (esc === "\\") out += "\\";
-          else if (esc === quote) out += quote;
-          else if (esc === "u") {
-            const hex = src.slice(i, i + 4);
-            if (!/^[0-9a-fA-F]{4}$/.test(hex)) throw new Error(`Invalid unicode escape at ${i - 2}`);
-            out += String.fromCharCode(parseInt(hex, 16));
-            i += 4;
-          } else if (esc === "x") {
-            const hex = src.slice(i, i + 2);
-            if (!/^[0-9a-fA-F]{2}$/.test(hex)) throw new Error(`Invalid hex escape at ${i - 2}`);
-            out += String.fromCharCode(parseInt(hex, 16));
-            i += 2;
-          } else {
-            // Preserve unknown escapes as-is (JS mostly treats them as the escaped char).
-            out += esc;
-          }
-        } else if (ch === quote) {
-          break;
-        } else {
-          out += ch;
-        }
-      }
-      push("string", out, start);
-      continue;
-    }
-    if (isDigit(c)) {
-      const start = i;
-      let num = "";
-      while (i < src.length && isDigit(peek())) num += next();
-      if (peek() === ".") {
-        num += next();
-        while (i < src.length && isDigit(peek())) num += next();
-      }
-      push("number", num, start);
-      continue;
-    }
-    if (isIdentStart(c)) {
-      const start = i;
-      let id = "";
-      while (i < src.length && isIdentPart(peek())) id += next();
-      if (keywords.has(id)) push("keyword", id, start);
-      else push("identifier", id, start);
-      continue;
-    }
-    const start = i;
-    const two = src.slice(i, i + 2);
-    const three = src.slice(i, i + 3);
-    if (three === "===" || three === "!==" || three === "...") {
-      i += 3;
-      push("operator", three, start);
-      continue;
-    }
-    if (two === "&&" || two === "||" || two === "==" || two === "!=" || two === "<=" || two === ">=" || two === "=>" || two === "+=" || two === "-=" || two === "*=" || two === "/=" || two === "%=" || two === "++" || two === "--") {
-      i += 2;
-      push("operator", two, start);
-      continue;
-    }
-    if ("+-*/%<>=!.,;:?(){}[]".includes(c)) {
-      i++;
-      const type = ".;,(){}[]".includes(c) ? "punct" : "operator";
-      push(type, c, start);
-      continue;
-    }
-    throw new Error(`Unexpected character '${c}' at ${i}`);
-  }
-  tokens.push({ type: "eof", value: "", pos: i });
-  return tokens;
-};
+import { parse as acornParse } from "acorn";
 
 export type Program = { type: "Program"; body: Stmt[] };
 export type BlockStatement = { type: "BlockStatement"; body: Stmt[] };
@@ -160,6 +21,7 @@ export type Stmt =
     }
   | { type: "ForInStatement"; left: VarDecl[] | Expr; leftKind: "let" | "const" | null; right: Expr; body: Stmt }
   | { type: "ForOfStatement"; left: VarDecl[] | Expr; leftKind: "let" | "const" | null; right: Expr; body: Stmt };
+
 export type Pattern =
   | Identifier
   | RestElement
@@ -451,503 +313,352 @@ export const validateNoPrototype = (program: Program) => {
   return errors;
 };
 
-export const parse = (src: string): Program => {
-  const tokens = tokenize(src);
-  let i = 0;
-  const peek = () => tokens[i];
-  const next = () => tokens[i++];
-  const eat = (type: TokenType, value?: string) => {
-    const t = peek();
-    if (t.type !== type || (value !== undefined && t.value !== value)) {
-      throw new Error(`Expected ${value ?? type} at ${t.pos}`);
-    }
-    return next();
-  };
-  const match = (type: TokenType, value?: string) => {
-    const t = peek();
-    return t.type === type && (value === undefined || t.value === value);
-  };
+type Node = {
+  type: string;
+  start?: number;
+  [key: string]: unknown;
+};
 
-  const parseProgram = (): Program => {
-    const body: Stmt[] = [];
-    while (!match("eof")) body.push(parseStatement());
-    return { type: "Program", body };
-  };
+const nodePos = (n: Node): number => (typeof n.start === "number" ? n.start : -1);
 
-  const parseStatement = (): Stmt => {
-    if (match("punct", "{")) return parseBlock();
-    if (match("keyword", "if")) return parseIf();
-    if (match("keyword", "while")) return parseWhile();
-    if (match("keyword", "for")) return parseFor();
-    if (match("keyword", "break")) { next(); if (match("punct", ";")) next(); return { type: "BreakStatement" }; }
-    if (match("keyword", "continue")) { next(); if (match("punct", ";")) next(); return { type: "ContinueStatement" }; }
-    if (match("keyword", "return")) return parseReturn();
-    if (match("keyword", "let") || match("keyword", "const")) return parseVarDecl();
-    const expr = parseExpression();
-    if (match("punct", ";")) next();
-    return { type: "ExpressionStatement", expression: expr };
-  };
+const unsupported = (n: Node, msg: string): never => {
+  throw new Error(`${msg} at ${nodePos(n)}`);
+};
 
-  const parseBlock = (): BlockStatement => {
-    eat("punct", "{");
-    const body: Stmt[] = [];
-    while (!match("punct", "}")) body.push(parseStatement());
-    eat("punct", "}");
-    return { type: "BlockStatement", body };
-  };
+const expectStringEnum = <T extends string>(
+  node: Node,
+  value: unknown,
+  allowed: readonly T[],
+  label: string,
+): T => {
+  if (typeof value !== "string" || !(allowed as readonly string[]).includes(value)) {
+    unsupported(node, `${label}: ${String(value)}`);
+  }
+  return value as T;
+};
 
-  const parseIf = (): Stmt => {
-    eat("keyword", "if");
-    eat("punct", "(");
-    const test = parseExpression();
-    eat("punct", ")");
-    const consequent = parseStatement();
-    const alternate = match("keyword", "else") ? (next(), parseStatement()) : null;
-    return { type: "IfStatement", test, consequent, alternate };
-  };
+const asNode = (value: unknown, where: string): Node => {
+  if (!value || typeof value !== "object" || typeof (value as Node).type !== "string") {
+    throw new Error(`Invalid AST node for ${where}`);
+  }
+  return value as Node;
+};
 
-  const parseReturn = (): Stmt => {
-    eat("keyword", "return");
-    if (match("punct", ";")) {
-      next();
-      return { type: "ReturnStatement", argument: null };
-    }
-    const argument = match("punct", "}") ? null : parseExpression();
-    if (match("punct", ";")) next();
-    return { type: "ReturnStatement", argument };
-  };
+const asNodeList = (value: unknown, where: string): Node[] => {
+  if (!Array.isArray(value)) throw new Error(`Expected array for ${where}`);
+  return value.map((v, i) => asNode(v, `${where}[${i}]`));
+};
 
-  const parseVarDeclCore = (consumeSemi: boolean) => {
-    const kind = next().value as "let" | "const";
-    const declarations: VarDecl[] = [];
-    do {
-      const id = parsePattern();
-      const init = match("operator", "=") ? (next(), parseExpression()) : null;
-      declarations.push({ type: "VariableDeclarator", id, init });
-      if (!match("punct", ",")) break;
-      next();
-    } while (true);
-    if (consumeSemi && match("punct", ";")) next();
-    return { kind, declarations };
-  };
+const toIdentifier = (node: Node): Identifier => {
+  if (node.type !== "Identifier") unsupported(node, `Unsupported identifier node: ${node.type}`);
+  const name = node.name;
+  if (typeof name !== "string") throw new Error(`Invalid identifier name at ${nodePos(node)}`);
+  return { type: "Identifier", name };
+};
 
-  const parseVarDecl = (): Stmt => {
-    const { kind, declarations } = parseVarDeclCore(true);
-    return { type: "VariableDeclaration", kind, declarations };
-  };
+const toLiteral = (node: Node): Literal => {
+  if (node.type !== "Literal") unsupported(node, `Unsupported literal node: ${node.type}`);
+  const value = node.value;
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return { type: "Literal", value };
+  }
+  unsupported(node, "Unsupported literal value");
+  throw new Error("unreachable");
+};
 
-  const parseWhile = (): Stmt => {
-    eat("keyword", "while");
-    eat("punct", "(");
-    const test = parseExpression();
-    eat("punct", ")");
-    const body = parseStatement();
-    return { type: "WhileStatement", test, body };
-  };
+const toKey = (node: Node): Identifier | Literal => {
+  if (node.type === "Identifier") return toIdentifier(node);
+  if (node.type === "Literal") return toLiteral(node);
+  unsupported(node, `Unsupported property key: ${node.type}`);
+  throw new Error("unreachable");
+};
 
-  const parseFor = (): Stmt => {
-    eat("keyword", "for");
-    eat("punct", "(");
-    let init: VarDecl[] | Expr | null = null;
-    let initKind: "let" | "const" | null = null;
-    if (!match("punct", ";")) {
-      if (match("keyword", "let") || match("keyword", "const")) {
-        const parsed = parseVarDeclCore(false);
-        init = parsed.declarations;
-        initKind = parsed.kind;
-      } else {
-        init = parseExpression();
-      }
-    }
-    if (match("keyword", "in") || match("keyword", "of")) {
-      const kind = next().value;
-      const right = parseExpression();
-      eat("punct", ")");
-      const body = parseStatement();
-      if (!init) throw new Error(`Expected initializer before ${kind} at ${peek().pos}`);
-      return kind === "in"
-        ? { type: "ForInStatement", left: init, leftKind: initKind, right, body }
-        : { type: "ForOfStatement", left: init, leftKind: initKind, right, body };
-    }
-    eat("punct", ";");
-    const test = match("punct", ";") ? null : parseExpression();
-    eat("punct", ";");
-    const update = match("punct", ")") ? null : parseExpression();
-    eat("punct", ")");
-    const body = parseStatement();
-    return { type: "ForStatement", init, initKind, test, update, body };
-  };
-
-  const parseExpression = (): Expr => parseAssignment();
-
-  const parseAssignment = (): Expr => {
-    const left = parseConditional();
-    if (match("operator", "=") || match("operator", "+=") || match("operator", "-=") || match("operator", "*=") || match("operator", "/=") || match("operator", "%=")) {
-      const op = next().value;
-      const right = parseAssignment();
-      return { type: "AssignmentExpression", operator: op, left, right };
-    }
-    return left;
-  };
-
-  const parseConditional = (): Expr => {
-    let test = parseLogicalOr();
-    if (match("operator", "?")) {
-      next();
-      const consequent = parseExpression();
-      eat("operator", ":");
-      const alternate = parseExpression();
-      return { type: "ConditionalExpression", test, consequent, alternate };
-    }
-    return test;
-  };
-
-  const parseLogicalOr = (): Expr => {
-    let left = parseLogicalAnd();
-    while (match("operator", "||")) {
-      const op = next().value;
-      const right = parseLogicalAnd();
-      left = { type: "LogicalExpression", operator: op, left, right };
-    }
-    return left;
-  };
-
-  const parseLogicalAnd = (): Expr => {
-    let left = parseEquality();
-    while (match("operator", "&&")) {
-      const op = next().value;
-      const right = parseEquality();
-      left = { type: "LogicalExpression", operator: op, left, right };
-    }
-    return left;
-  };
-
-  const parseEquality = (): Expr => {
-    let left = parseRelational();
-    while (match("operator", "==") || match("operator", "!=") || match("operator", "===") || match("operator", "!==")) {
-      const op = next().value;
-      const right = parseRelational();
-      left = { type: "BinaryExpression", operator: op, left, right };
-    }
-    return left;
-  };
-
-  const parseRelational = (): Expr => {
-    let left = parseAdditive();
-    while (match("operator", "<") || match("operator", "<=") || match("operator", ">") || match("operator", ">=")) {
-      const op = next().value;
-      const right = parseAdditive();
-      left = { type: "BinaryExpression", operator: op, left, right };
-    }
-    return left;
-  };
-
-  const parseAdditive = (): Expr => {
-    let left = parseMultiplicative();
-    while (match("operator", "+") || match("operator", "-")) {
-      const op = next().value;
-      const right = parseMultiplicative();
-      left = { type: "BinaryExpression", operator: op, left, right };
-    }
-    return left;
-  };
-
-  const parseMultiplicative = (): Expr => {
-    let left = parseUnary();
-    while (match("operator", "*") || match("operator", "/") || match("operator", "%")) {
-      const op = next().value;
-      const right = parseUnary();
-      left = { type: "BinaryExpression", operator: op, left, right };
-    }
-    return left;
-  };
-
-  const parseUnary = (): Expr => {
-    if (match("keyword", "await")) {
-      next();
-      return { type: "AwaitExpression", argument: parseUnary() };
-    }
-    if (match("operator", "++") || match("operator", "--")) {
-      const op = next().value as "++" | "--";
-      return { type: "UpdateExpression", operator: op, argument: parseUnary(), prefix: true };
-    }
-    if (match("keyword", "typeof")) {
-      next();
-      return { type: "UnaryExpression", operator: "typeof", argument: parseUnary() };
-    }
-    if (match("operator", "!") || match("operator", "-") || match("operator", "+")) {
-      const op = next().value;
-      return { type: "UnaryExpression", operator: op, argument: parseUnary() };
-    }
-    return parsePostfix();
-  };
-
-  const parsePostfix = (): Expr => {
-    let expr = parseArrowOrPrimary();
-    while (true) {
-      if (match("operator", "++") || match("operator", "--")) {
-        const op = next().value as "++" | "--";
-        expr = { type: "UpdateExpression", operator: op, argument: expr, prefix: false };
-        continue;
-      }
-      if (match("punct", "(")) {
-        const args = parseArguments();
-        expr = { type: "CallExpression", callee: expr, arguments: args };
-        continue;
-      }
-      if (match("punct", ".")) {
-        next();
-        const prop = parseIdentifier();
-        expr = { type: "MemberExpression", object: expr, property: prop, computed: false };
-        continue;
-      }
-      if (match("punct", "[")) {
-        next();
-        const prop = parseExpression();
-        eat("punct", "]");
-        expr = { type: "MemberExpression", object: expr, property: prop, computed: true };
-        continue;
-      }
-      break;
-    }
-    return expr;
-  };
-
-  const parseArrowOrPrimary = (): Expr => {
-    if (match("identifier", "async")) {
-      const start = i;
-      next();
-      if (match("identifier")) {
-        const id = parseIdentifier();
-        if (match("operator", "=>")) {
-          next();
-          const body = match("punct", "{") ? parseBlock() : parseExpression();
-          return { type: "ArrowFunctionExpression", params: [id], body, async: true };
-        }
-      } else if (match("punct", "(")) {
-        next();
-        const params: Pattern[] = [];
-        let isParams = true;
-        try {
-          if (!match("punct", ")")) {
-            do {
-              params.push(parsePattern());
-              if (!match("punct", ",")) break;
-              next();
-              if (match("punct", ")")) break; // trailing comma
-            } while (true);
-          }
-        } catch {
-          isParams = false;
-        }
-        if (isParams && match("punct", ")")) {
-          next();
-          if (match("operator", "=>")) {
-            next();
-            const body = match("punct", "{") ? parseBlock() : parseExpression();
-            return { type: "ArrowFunctionExpression", params, body, async: true };
-          }
-        }
-      }
-      i = start;
-    }
-
-    if (match("identifier")) {
-      const id = parseIdentifier();
-      if (match("operator", "=>")) {
-        next();
-        const body = match("punct", "{") ? parseBlock() : parseExpression();
-        return { type: "ArrowFunctionExpression", params: [id], body, async: false };
-      }
-      return id;
-    }
-    if (match("punct", "(")) {
-      const start = i;
-      next();
-      const params: Pattern[] = [];
-      let isParams = true;
-      try {
-        if (!match("punct", ")")) {
-          do {
-            params.push(parsePattern());
-            if (!match("punct", ",")) break;
-            next();
-            if (match("punct", ")")) break; // trailing comma
-          } while (true);
-        }
-      } catch {
-        isParams = false;
-      }
-      if (isParams && match("punct", ")")) {
-        next();
-        if (match("operator", "=>")) {
-          next();
-          const body = match("punct", "{") ? parseBlock() : parseExpression();
-          return { type: "ArrowFunctionExpression", params, body, async: false };
-        }
-      }
-      i = start;
-      eat("punct", "(");
-      const expr = parseExpression();
-      eat("punct", ")");
-      return expr;
-    }
-    return parsePrimary();
-  };
-
-  const parsePrimary = (): Expr => {
-    if (match("number")) return { type: "Literal", value: Number(next().value) };
-    if (match("string")) return { type: "Literal", value: next().value };
-    if (match("keyword", "true")) { next(); return { type: "Literal", value: true }; }
-    if (match("keyword", "false")) { next(); return { type: "Literal", value: false }; }
-    if (match("keyword", "null")) { next(); return { type: "Literal", value: null }; }
-    if (match("punct", "[")) return parseArray();
-    if (match("punct", "{")) return parseObject();
-    if (match("identifier")) return parseIdentifier();
-    throw new Error(`Unexpected token ${peek().type} ${peek().value} at ${peek().pos}`);
-  };
-
-  const parseArray = (): Expr => {
-    eat("punct", "[");
-    const elements: (Expr | SpreadElement)[] = [];
-    if (!match("punct", "]")) {
-      do {
-        if (match("operator", "...")) {
-          next();
-          elements.push({ type: "SpreadElement", argument: parseExpression() });
-        } else {
-          elements.push(parseExpression());
-        }
-        if (!match("punct", ",")) break;
-        next();
-        if (match("punct", "]")) break; // trailing comma
-      } while (true);
-    }
-    eat("punct", "]");
-    return { type: "ArrayExpression", elements };
-  };
-
-  const parseObject = (): Expr => {
-    eat("punct", "{");
-    const properties: (Property | SpreadElement)[] = [];
-    if (!match("punct", "}")) {
-      do {
-        if (match("operator", "...")) {
-          next();
-          properties.push({ type: "SpreadElement", argument: parseExpression() });
-          if (!match("punct", ",")) break;
-          next();
-          if (match("punct", "}")) break; // trailing comma
+const toPattern = (node: Node): Pattern => {
+  switch (node.type) {
+    case "Identifier":
+      return toIdentifier(node);
+    case "RestElement":
+      return { type: "RestElement", argument: toPattern(asNode(node.argument, "RestElement.argument")) };
+    case "ArrayPattern": {
+      const raw = asNodeList(node.elements ?? [], "ArrayPattern.elements");
+      const elements: Pattern[] = [];
+      for (const el of raw) {
+        if (el.type === "Identifier" || el.type === "RestElement" || el.type === "ArrayPattern" || el.type === "ObjectPattern") {
+          elements.push(toPattern(el));
           continue;
         }
-        let key: Identifier | Literal;
-        let shorthand = false;
-        if (match("identifier")) key = parseIdentifier();
-        else if (match("string")) key = { type: "Literal", value: next().value };
-        else if (match("number")) key = { type: "Literal", value: Number(next().value) };
-        else throw new Error(`Expected object key at ${peek().pos}`);
-        let value: Expr;
-        if (match("operator", ":")) {
-          next();
-          value = parseExpression();
-        } else {
-          if (key.type !== "Identifier") throw new Error(`Expected ':' after key at ${peek().pos}`);
-          value = key;
-          shorthand = true;
-        }
-        properties.push({ type: "Property", key, value, shorthand });
-        if (!match("punct", ",")) break;
-        next();
-        if (match("punct", "}")) break; // trailing comma
-      } while (true);
-    }
-    eat("punct", "}");
-    return { type: "ObjectExpression", properties };
-  };
-
-  const parseArguments = (): (Expr | SpreadElement)[] => {
-    eat("punct", "(");
-    const args: (Expr | SpreadElement)[] = [];
-    if (!match("punct", ")")) {
-      do {
-        if (match("operator", "...")) {
-          next();
-          args.push({ type: "SpreadElement", argument: parseExpression() });
-        } else {
-          args.push(parseExpression());
-        }
-        if (!match("punct", ",")) break;
-        next();
-        if (match("punct", ")")) break; // trailing comma
-      } while (true);
-    }
-    eat("punct", ")");
-    return args;
-  };
-
-  const parseIdentifier = (): Identifier => {
-    const t = eat("identifier");
-    return { type: "Identifier", name: t.value };
-  };
-
-  const parsePattern = (): Pattern => {
-    if (match("operator", "...")) {
-      next();
-      return { type: "RestElement", argument: parsePattern() };
-    }
-    if (match("punct", "[")) {
-      eat("punct", "[");
-      const elements: Pattern[] = [];
-      if (!match("punct", "]")) {
-        do {
-          elements.push(parsePattern());
-          if (!match("punct", ",")) break;
-          next();
-          if (match("punct", "]")) break; // trailing comma
-        } while (true);
+        unsupported(el, "Unsupported array pattern element");
       }
-      eat("punct", "]");
       return { type: "ArrayPattern", elements };
     }
-    if (match("punct", "{")) {
-      eat("punct", "{");
-      const properties: (PatternProperty | RestElement)[] = [];
-      if (!match("punct", "}")) {
-        do {
-          if (match("operator", "...")) {
-            next();
-            properties.push({ type: "RestElement", argument: parsePattern() });
-            if (!match("punct", ",")) break;
-            next();
-            if (match("punct", "}")) break; // trailing comma
-            continue;
-          }
-          let key: Identifier | Literal;
-          let shorthand = false;
-          if (match("identifier")) key = parseIdentifier();
-          else if (match("string")) key = { type: "Literal", value: next().value };
-          else if (match("number")) key = { type: "Literal", value: Number(next().value) };
-          else throw new Error(`Expected object pattern key at ${peek().pos}`);
-          let value: Pattern;
-          if (match("operator", ":")) {
-            next();
-            value = parsePattern();
-          } else {
-            if (key.type !== "Identifier") throw new Error(`Expected ':' after key at ${peek().pos}`);
-            value = key;
-            shorthand = true;
-          }
-          properties.push({ type: "Property", key, value, shorthand });
-          if (!match("punct", ",")) break;
-          next();
-          if (match("punct", "}")) break; // trailing comma
-        } while (true);
-      }
-      eat("punct", "}");
+    case "ObjectPattern": {
+      const props = asNodeList(node.properties, "ObjectPattern.properties");
+      const properties: (PatternProperty | RestElement)[] = props.map((prop) => {
+        if (prop.type === "RestElement") {
+          return { type: "RestElement", argument: toPattern(asNode(prop.argument, "RestElement.argument")) };
+        }
+        if (prop.type !== "Property") unsupported(prop, `Unsupported object pattern property: ${prop.type}`);
+        if (prop.kind !== "init" || prop.method === true || prop.computed === true) {
+          unsupported(prop, "Unsupported object pattern property form");
+        }
+        const key = toKey(asNode(prop.key, "Property.key"));
+        const value = toPattern(asNode(prop.value, "Property.value"));
+        const shorthand = prop.shorthand === true;
+        return { type: "Property", key, value, shorthand };
+      });
       return { type: "ObjectPattern", properties };
     }
-    return parseIdentifier();
-  };
+    default:
+      unsupported(node, `Unsupported pattern node: ${node.type}`);
+      throw new Error("unreachable");
+  }
+};
 
-  return parseProgram();
+const toSpreadElement = (node: Node): SpreadElement => {
+  if (node.type !== "SpreadElement") unsupported(node, `Unsupported spread node: ${node.type}`);
+  return { type: "SpreadElement", argument: toExpr(asNode(node.argument, "SpreadElement.argument")) };
+};
+
+const toExpr = (node: Node): Expr => {
+  switch (node.type) {
+    case "Identifier":
+      return toIdentifier(node);
+    case "Literal":
+      return toLiteral(node);
+    case "ArrayExpression": {
+      const raw = asNodeList(node.elements ?? [], "ArrayExpression.elements");
+      const elements: (Expr | SpreadElement)[] = raw.map((el) =>
+        el.type === "SpreadElement" ? toSpreadElement(el) : toExpr(el)
+      );
+      return { type: "ArrayExpression", elements };
+    }
+    case "ObjectExpression": {
+      const props = asNodeList(node.properties, "ObjectExpression.properties");
+      const properties: (Property | SpreadElement)[] = props.map((prop) => {
+        if (prop.type === "SpreadElement") return toSpreadElement(prop);
+        if (prop.type !== "Property") unsupported(prop, `Unsupported object expression property: ${prop.type}`);
+        if (prop.kind !== "init" || prop.method === true || prop.computed === true) {
+          unsupported(prop, "Unsupported object expression property form");
+        }
+        const key = toKey(asNode(prop.key, "Property.key"));
+        const value = toExpr(asNode(prop.value, "Property.value"));
+        const shorthand = prop.shorthand === true;
+        return { type: "Property", key, value, shorthand };
+      });
+      return { type: "ObjectExpression", properties };
+    }
+    case "AwaitExpression":
+      return { type: "AwaitExpression", argument: toExpr(asNode(node.argument, "AwaitExpression.argument")) };
+    case "CallExpression": {
+      const args = asNodeList(node.arguments ?? [], "CallExpression.arguments");
+      return {
+        type: "CallExpression",
+        callee: toExpr(asNode(node.callee, "CallExpression.callee")),
+        arguments: args.map((a) => (a.type === "SpreadElement" ? toSpreadElement(a) : toExpr(a))),
+      };
+    }
+    case "MemberExpression": {
+      const computed = node.computed === true;
+      return {
+        type: "MemberExpression",
+        object: toExpr(asNode(node.object, "MemberExpression.object")),
+        property: toExpr(asNode(node.property, "MemberExpression.property")),
+        computed,
+      };
+    }
+    case "AssignmentExpression": {
+      const operator = node.operator;
+      if (typeof operator !== "string") throw new Error(`Invalid assignment operator at ${nodePos(node)}`);
+      return {
+        type: "AssignmentExpression",
+        operator,
+        left: toExpr(asNode(node.left, "AssignmentExpression.left")),
+        right: toExpr(asNode(node.right, "AssignmentExpression.right")),
+      };
+    }
+    case "UpdateExpression": {
+      const operator = expectStringEnum(node, node.operator, ["++", "--"], "Unsupported update operator");
+      return {
+        type: "UpdateExpression",
+        operator,
+        argument: toExpr(asNode(node.argument, "UpdateExpression.argument")),
+        prefix: node.prefix === true,
+      };
+    }
+    case "BinaryExpression":
+    case "LogicalExpression": {
+      const operator = node.operator;
+      if (typeof operator !== "string") throw new Error(`Invalid operator at ${nodePos(node)}`);
+      return {
+        type: node.type,
+        operator,
+        left: toExpr(asNode(node.left, "Binary/Logical.left")),
+        right: toExpr(asNode(node.right, "Binary/Logical.right")),
+      };
+    }
+    case "UnaryExpression": {
+      const operator = node.operator;
+      if (typeof operator !== "string") throw new Error(`Invalid unary operator at ${nodePos(node)}`);
+      return {
+        type: "UnaryExpression",
+        operator,
+        argument: toExpr(asNode(node.argument, "UnaryExpression.argument")),
+      };
+    }
+    case "ConditionalExpression":
+      return {
+        type: "ConditionalExpression",
+        test: toExpr(asNode(node.test, "ConditionalExpression.test")),
+        consequent: toExpr(asNode(node.consequent, "ConditionalExpression.consequent")),
+        alternate: toExpr(asNode(node.alternate, "ConditionalExpression.alternate")),
+      };
+    case "ArrowFunctionExpression": {
+      const params = asNodeList(node.params ?? [], "ArrowFunctionExpression.params").map(toPattern);
+      const bodyNode = asNode(node.body, "ArrowFunctionExpression.body");
+      const body = bodyNode.type === "BlockStatement" ? toBlock(bodyNode) : toExpr(bodyNode);
+      return {
+        type: "ArrowFunctionExpression",
+        params,
+        body,
+        async: node.async === true,
+      };
+    }
+    default:
+      unsupported(node, `Unsupported expression: ${node.type}`);
+      throw new Error("unreachable");
+  }
+};
+
+const toVarDecl = (node: Node): VarDecl => {
+  if (node.type !== "VariableDeclarator") unsupported(node, `Unsupported declarator node: ${node.type}`);
+  return {
+    type: "VariableDeclarator",
+    id: toPattern(asNode(node.id, "VariableDeclarator.id")),
+    init: node.init == null ? null : toExpr(asNode(node.init, "VariableDeclarator.init")),
+  };
+};
+
+const toLetConstDecls = (node: Node): { kind: "let" | "const"; declarations: VarDecl[] } => {
+  if (node.type !== "VariableDeclaration") unsupported(node, `Unsupported declaration node: ${node.type}`);
+  const kind = expectStringEnum(node, node.kind, ["let", "const"], "Unsupported variable kind");
+  const declarations = asNodeList(node.declarations ?? [], "VariableDeclaration.declarations").map(toVarDecl);
+  return { kind, declarations };
+};
+
+const toForLeft = (leftNode: Node): { left: VarDecl[] | Expr; leftKind: "let" | "const" | null } => {
+  if (leftNode.type === "VariableDeclaration") {
+    const { kind, declarations } = toLetConstDecls(leftNode);
+    return { left: declarations, leftKind: kind };
+  }
+  return { left: toExpr(leftNode), leftKind: null };
+};
+
+const toBlock = (node: Node): BlockStatement => {
+  if (node.type !== "BlockStatement") unsupported(node, `Unsupported block node: ${node.type}`);
+  const body = asNodeList(node.body ?? [], "BlockStatement.body")
+    .filter((stmt) => stmt.type !== "EmptyStatement")
+    .map(toStmt);
+  return { type: "BlockStatement", body };
+};
+
+const toStmt = (node: Node): Stmt => {
+  switch (node.type) {
+    case "BlockStatement":
+      return toBlock(node);
+    case "ExpressionStatement":
+      return { type: "ExpressionStatement", expression: toExpr(asNode(node.expression, "ExpressionStatement.expression")) };
+    case "IfStatement":
+      return {
+        type: "IfStatement",
+        test: toExpr(asNode(node.test, "IfStatement.test")),
+        consequent: toStmt(asNode(node.consequent, "IfStatement.consequent")),
+        alternate: node.alternate ? toStmt(asNode(node.alternate, "IfStatement.alternate")) : null,
+      };
+    case "ReturnStatement":
+      return {
+        type: "ReturnStatement",
+        argument: node.argument == null ? null : toExpr(asNode(node.argument, "ReturnStatement.argument")),
+      };
+    case "VariableDeclaration": {
+      const { kind, declarations } = toLetConstDecls(node);
+      return { type: "VariableDeclaration", kind, declarations };
+    }
+    case "BreakStatement":
+      return { type: "BreakStatement" };
+    case "ContinueStatement":
+      return { type: "ContinueStatement" };
+    case "WhileStatement":
+      return {
+        type: "WhileStatement",
+        test: toExpr(asNode(node.test, "WhileStatement.test")),
+        body: toStmt(asNode(node.body, "WhileStatement.body")),
+      };
+    case "ForStatement": {
+      const initNode = node.init;
+      let init: VarDecl[] | Expr | null = null;
+      let initKind: "let" | "const" | null = null;
+      if (initNode != null) {
+        const iNode = asNode(initNode, "ForStatement.init");
+        if (iNode.type === "VariableDeclaration") {
+          const parsed = toLetConstDecls(iNode);
+          init = parsed.declarations;
+          initKind = parsed.kind;
+        } else {
+          init = toExpr(iNode);
+        }
+      }
+      return {
+        type: "ForStatement",
+        init,
+        initKind,
+        test: node.test == null ? null : toExpr(asNode(node.test, "ForStatement.test")),
+        update: node.update == null ? null : toExpr(asNode(node.update, "ForStatement.update")),
+        body: toStmt(asNode(node.body, "ForStatement.body")),
+      };
+    }
+    case "ForInStatement": {
+      const left = toForLeft(asNode(node.left, "ForInStatement.left"));
+      return {
+        type: "ForInStatement",
+        left: left.left,
+        leftKind: left.leftKind,
+        right: toExpr(asNode(node.right, "ForInStatement.right")),
+        body: toStmt(asNode(node.body, "ForInStatement.body")),
+      };
+    }
+    case "ForOfStatement": {
+      if (node.await === true) unsupported(node, "for-await-of is not supported");
+      const left = toForLeft(asNode(node.left, "ForOfStatement.left"));
+      return {
+        type: "ForOfStatement",
+        left: left.left,
+        leftKind: left.leftKind,
+        right: toExpr(asNode(node.right, "ForOfStatement.right")),
+        body: toStmt(asNode(node.body, "ForOfStatement.body")),
+      };
+    }
+    default:
+      unsupported(node, `Unsupported statement: ${node.type}`);
+      throw new Error("unreachable");
+  }
+};
+
+export const parse = (src: string): Program => {
+  const raw = acornParse(src, {
+    ecmaVersion: "latest",
+    sourceType: "script",
+    allowReturnOutsideFunction: true,
+    allowAwaitOutsideFunction: true,
+  }) as unknown as Node;
+
+  if (raw.type !== "Program") unsupported(raw, `Unsupported root node: ${raw.type}`);
+  const body = asNodeList(raw.body ?? [], "Program.body")
+    .filter((stmt) => stmt.type !== "EmptyStatement")
+    .map(toStmt);
+  return { type: "Program", body };
 };

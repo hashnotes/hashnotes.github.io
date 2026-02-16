@@ -18,6 +18,7 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
+    "acorn": "^8.15.0",
     "spacetimedb": "^1.11.4"
   }
 }
