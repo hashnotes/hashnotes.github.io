@@ -1,4 +1,6 @@
 import { tojson, type Jsonable } from "@hashnotes/core/notes";
+import { addNote } from "../src/db.ts";
+import http from "node:http";
 
 /**
  * Extract the body of a function as a source string suitable for note storage.
@@ -47,4 +49,23 @@ export const note = (fn: Function, vars?: Record<string, Jsonable>): string => {
     .map(([k, v]) => `const ${k} = ${tojson(v)};`)
     .join("\n");
   return `${decls}\n${body}`;
+};
+
+/**
+ * Publish a view note: adds it to the DB, then POSTs the hash
+ * to the live server (localhost:4321) so /live picks it up.
+ */
+export const publishView = async (viewFn: string) => {
+  const hash = await addNote(viewFn);
+  console.log("view hash:", hash);
+
+  // notify live server (fire-and-forget, ok if not running)
+  const req = http.request(
+    { hostname: "localhost", port: 4321, path: "/hash", method: "POST" },
+    () => {}
+  );
+  req.on("error", () => {});
+  req.end(hash);
+
+  return hash;
 };
