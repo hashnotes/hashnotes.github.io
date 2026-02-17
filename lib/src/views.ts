@@ -105,6 +105,7 @@ export const renderDom = (mker: (ufn: UPPER) => VDom): HTMLElement => {
     },
     update: (el: VDom) => {
       let oldel = elements.get(el)!
+      if (!oldel) return
       oldel.replaceWith(render(el))
       doms.delete(oldel)
     }

@@ -1,3 +1,5 @@
+// ts-note: ts-notes/#a1ad448b7c114e3c5dd50dd7d6cb2407.ts
+// js-note: js-notes/#03186aed4c434e463a967d222dabea4f.js
 // Server function: increment a counter in the store.
 // Compiles to one note. Called via remote() from the view.
 

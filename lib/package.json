@@ -10,8 +10,8 @@
     "test": "node --test --experimental-strip-types __tests__/dag.test.ts __tests__/localstore.test.ts __tests__/compile.test.ts",
     "test:backend": "node --test --experimental-strip-types __tests__/backend.test.ts",
     "script": "node --no-warnings=ExperimentalWarning --experimental-strip-types",
-    "script:smoke": "npm run script -- scripts/smoke.ts",
-    "dev": "npm run script -- scripts/dev.ts",
+    "script:smoke": "npm run script -- cli-scripts/smoke.ts",
+    "dev": "npm run script -- cli-scripts/dev.ts",
     "check": "tsc --noEmit"
   },
   "dependencies": {

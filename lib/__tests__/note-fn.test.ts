@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { assert, assertEq } from "./assert.ts";
-import { noteBody, note } from "../scripts/note-fn.ts";
+import { noteBody, note } from "../cli-scripts/note-fn.ts";
 
 test("noteBody extracts function body", () => {
   const src = noteBody(function () {

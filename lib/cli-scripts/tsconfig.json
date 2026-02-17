@@ -3,5 +3,5 @@
   "compilerOptions": {
     "lib": ["ES2021", "DOM"]
   },
-  "include": [".", "../scripts/hashnotes-env.d.ts"]
+  "include": [".", "../src", "../scripts"]
 }

@@ -22,7 +22,6 @@ const renderRef = async (mount: HTMLElement, ref: Ref) => {
     const view = await callViewClient(ref, {});
     const el = renderDom(view);
     mount.innerHTML = "";
-    // mount.append(renderDom(u => HTML.pre(note as string)));
     mount.append(el);
   } catch (err) {
     mount.innerHTML = "";
