@@ -8,8 +8,29 @@ type ClientFuelOptions = {
   env?: Record<string, unknown>;
 };
 
-const localStoreKey = (fnRef: Ref, key: Ref | Jsonable): string =>
+const localStoreKey = (fnRef: string, key: Ref | Jsonable): string =>
   `${fnRef}|${hashData(key as Jsonable)}`;
+
+/** Create a store scoped to a specific note ref. */
+const makeStore = (
+  noteRef: string,
+  memStore: Map<string, Jsonable>,
+  ls: Storage | undefined,
+) => ({
+  get: (key: Ref | Jsonable): Jsonable | undefined => {
+    const skey = `hashnotes:store:${localStoreKey(noteRef, key)}`;
+    const raw = ls?.getItem(skey);
+    if (raw != null) return fromjson(raw) as Jsonable;
+    return memStore.get(skey);
+  },
+  set: (key: Ref | Jsonable, value: Ref | Jsonable): Jsonable => {
+    const skey = `hashnotes:store:${localStoreKey(noteRef, key)}`;
+    const v = value as Jsonable;
+    if (ls) ls.setItem(skey, JSON.stringify(v));
+    else memStore.set(skey, v);
+    return v;
+  },
+});
 
 type LocalExecutor = (fn: Ref | Jsonable, arg: Ref | Jsonable) => Promise<unknown>;
 
@@ -50,31 +71,18 @@ const createLocalExecutor = (options: ClientFuelOptions): LocalExecutor => {
     if (typeof fnNote !== "string") throw new Error("function note must resolve to a string");
     const argNote = await deRef(argRef);
 
-    const store = {
-      get: (key: Ref | Jsonable): Jsonable | undefined => {
-        const skey = `hashnotes:store:${localStoreKey(fnRef, key)}`;
-        const raw = ls?.getItem(skey);
-        if (raw != null) return fromjson(raw) as Jsonable;
-        return memStore.get(skey);
-      },
-      set: (key: Ref | Jsonable, value: Ref | Jsonable): Jsonable => {
-        const skey = `hashnotes:store:${localStoreKey(fnRef, key)}`;
-        const v = value as Jsonable;
-        if (ls) ls.setItem(skey, JSON.stringify(v));
-        else memStore.set(skey, v);
-        return v;
-      },
-    };
+    const store = makeStore(fnRef, memStore, ls);
 
     const remote = async (remoteFn: Ref | Jsonable, remoteArg?: Ref | Jsonable): Promise<Jsonable> =>
       callNote(remoteFn, remoteArg === undefined ? null : remoteArg);
 
-    /** Return a callable wrapper that runs the dep's body with arg = callArg. */
+    /** Return a callable wrapper that runs the dep's body with arg = callArg, own store. */
     const getNoteSync = (ref: string): (callArg: unknown) => unknown => {
       const src = sourceCache.get(ref);
       if (src === undefined) throw new Error(`getNoteSync: note ${ref} not in cache`);
       return (callArg: unknown) => {
-        const result = runWithFuelShared(src, fuelRef, { ...env, arg: callArg });
+        const depStore = makeStore(ref, memStore, ls);
+        const result = runWithFuelShared(src, fuelRef, { ...env, arg: callArg, store: depStore });
         if ("err" in result) throw new Error(result.err);
         return result.ok;
       };
@@ -152,31 +160,18 @@ export const callViewClient = async (
   };
   for (const dep of parseDeps(fnNote)) await prefetch(dep);
 
-  const store = {
-    get: (key: Ref | Jsonable): Jsonable | undefined => {
-      const skey = `hashnotes:store:${localStoreKey(fnRef, key)}`;
-      const raw = ls?.getItem(skey);
-      if (raw != null) return fromjson(raw) as Jsonable;
-      return memStore.get(skey);
-    },
-    set: (key: Ref | Jsonable, value: Ref | Jsonable): Jsonable => {
-      const skey = `hashnotes:store:${localStoreKey(fnRef, key)}`;
-      const v = value as Jsonable;
-      if (ls) ls.setItem(skey, JSON.stringify(v));
-      else memStore.set(skey, v);
-      return v;
-    },
-  };
+  const store = makeStore(fnRef, memStore, ls);
 
   const remote = async (remoteFn: Ref | Jsonable, remoteArg?: Ref | Jsonable): Promise<Jsonable> =>
     callNote(remoteFn, remoteArg === undefined ? null : remoteArg);
 
-  /** Return a callable wrapper that runs the dep's body with arg = callArg. */
+  /** Return a callable wrapper that runs the dep's body with arg = callArg, own store. */
   const getNoteSync = (ref: string): (callArg: unknown) => unknown => {
     const src = sourceCache.get(ref);
     if (src === undefined) throw new Error(`getNoteSync: note ${ref} not in cache`);
     return (callArg: unknown) => {
-      const result = runWithFuelShared(src, fuelRef, { ...baseEnv, arg: callArg });
+      const depStore = makeStore(ref, memStore, ls);
+      const result = runWithFuelShared(src, fuelRef, { ...baseEnv, arg: callArg, store: depStore });
       if ("err" in result) throw new Error(result.err);
       return result.ok;
     };

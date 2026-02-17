@@ -1,13 +1,13 @@
 [
   {
-    "tsHash": "#a1ad448b7c114e3c5dd50dd7d6cb2407",
-    "jsHash": "#03186aed4c434e463a967d222dabea4f",
+    "tsHash": "#0f42ffe9974f38c1c835ee9880fe5ef8",
+    "jsHash": "#4eb02816aec07b67ecec800cb83949de",
     "exportName": "counterFn",
     "filename": "counterFn"
   },
   {
-    "tsHash": "#6e80a64930274308363717d532297f79",
-    "jsHash": "#599c2b756995f4ea73bbfa7d42b98c93",
+    "tsHash": "#04cebc474837532104b59f8f8b19ec3a",
+    "jsHash": "#b46032f80e043f763bbe5efafe609e47",
     "exportName": "view",
     "filename": "counterView"
   }
