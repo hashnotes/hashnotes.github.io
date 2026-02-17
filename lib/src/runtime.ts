@@ -174,14 +174,8 @@ export const callViewClient = async (
   const store = makeStore(fnRef, memStore, ls);
 
   const remote = async (fn: unknown, remoteArg?: Ref | Jsonable): Promise<Jsonable> => {
-    const hash = fnToHash.get(fn as Function);
-    const resolved = hash ?? fn;
-    try {
-      const result = await callNote(resolved as Ref | Jsonable, remoteArg === undefined ? null : remoteArg);
-      return result;
-    } catch (e) {
-      throw e;
-    }
+    const hash = fnToHash.get(fn as Function) ?? fn;
+    return callNote(hash as Ref | Jsonable, remoteArg === undefined ? null : remoteArg);
   };
 
   /** Return a callable wrapper that runs the dep's body with arg = callArg, own store. */

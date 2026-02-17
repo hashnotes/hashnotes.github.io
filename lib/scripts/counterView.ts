@@ -1,8 +1,8 @@
-// ts-note: ts-notes/#b88df8f055da9ffa9211b03a36ffec19.ts
+// ts-note: ts-notes/#4e8b1995244d419b7894f17ae11ef4ee.ts
 // js-note: js-notes/#6e856fbf4b49cc683cb444320c2902ff.js
 
 
-import { counterFn } from "./counterFn";
+import { counterFn } from "./ts-notes/#e4ed00ce23197e547addafe7c3bd34e9";
 
 export const view = ({update}: UPPER) => {
   const label = HTML.p("count: loading...");

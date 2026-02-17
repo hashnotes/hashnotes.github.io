@@ -6,7 +6,13 @@
     "filename": "counterFn"
   },
   {
-    "tsHash": "#b88df8f055da9ffa9211b03a36ffec19",
+    "tsHash": "#e4ed00ce23197e547addafe7c3bd34e9",
+    "jsHash": "#a6c815f113e0c11d31bd84bc93baffbc",
+    "exportName": "counterFn",
+    "filename": "#e4ed00ce23197e547addafe7c3bd34e9"
+  },
+  {
+    "tsHash": "#4e8b1995244d419b7894f17ae11ef4ee",
     "jsHash": "#6e856fbf4b49cc683cb444320c2902ff",
     "exportName": "view",
     "filename": "counterView"

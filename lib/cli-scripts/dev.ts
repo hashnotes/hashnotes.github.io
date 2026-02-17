@@ -13,8 +13,8 @@ import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync, watch 
 import { resolve, basename } from "node:path";
 import { createServer } from "node:http";
 import { compileModule } from "../src/compile.ts";
-import { addNote } from "../src/db.ts";
-import { hashData } from "@hashnotes/core/notes";
+import { addNote, getNote } from "../src/db.ts";
+import { hashData, type Ref } from "@hashnotes/core/notes";
 
 const SCRIPTS_DIR = resolve(import.meta.dirname!, "../scripts");
 const TS_NOTES_DIR = resolve(SCRIPTS_DIR, "ts-notes");
@@ -92,20 +92,58 @@ const compile = async () => {
     nameByTsHash.set(tsHash, name);
   }
 
-  // Dependency graph: name → [dep names]
+  // Dependency graph: name → [dep names or hashes]
   const deps = new Map<string, string[]>();
-  for (const [name, src] of sourcesByName) {
+  const parseDeps = (name: string, src: string) => {
     const imports: string[] = [];
     for (const m of src.matchAll(/from\s+["']\.\/([^"']+)["']/g)) {
-      let dep = m[1].replace(/\.ts$/, "");
-      // If importing by hash, resolve to filename
+      let dep = m[1].replace(/\.ts$/, "").replace(/^ts-notes\//, "");
       if (dep.startsWith("#") && nameByTsHash.has(dep)) {
         dep = nameByTsHash.get(dep)!;
       }
       imports.push(dep);
     }
     deps.set(name, imports);
-  }
+  };
+  for (const [name, src] of sourcesByName) parseDeps(name, src);
+
+  // Pull missing hash imports from server
+  const pulledHashes = new Set<string>(); // hashes we fetched from server
+  let missing: string[] = [];
+  do {
+    missing = [];
+    for (const depList of deps.values()) {
+      for (const dep of depList) {
+        if (dep.startsWith("#") && !sourcesByName.has(dep) && !pulledHashes.has(dep)) {
+          missing.push(dep);
+        }
+      }
+    }
+    for (const hash of missing) {
+      try {
+        const tsSrc = await getNote(hash as Ref);
+        if (typeof tsSrc !== "string") {
+          console.warn(`  pull: ${hash} is not a string, skipping`);
+          pulledHashes.add(hash);
+          continue;
+        }
+        console.log(`  pull: ${hash} from server`);
+        // Register under its hash as the "name"
+        sourcesByName.set(hash, tsSrc);
+        tsHashByName.set(hash, hash);
+        nameByTsHash.set(hash, hash);
+        pulledHashes.add(hash);
+        // Write to ts-notes/ for local cache
+        mkdirSync(TS_NOTES_DIR, { recursive: true });
+        writeFileSync(resolve(TS_NOTES_DIR, `${hash}.ts`), tsSrc);
+        // Parse its deps (may discover more missing)
+        parseDeps(hash, tsSrc);
+      } catch (err) {
+        console.warn(`  pull: failed to fetch ${hash}:`, err);
+        pulledHashes.add(hash); // don't retry
+      }
+    }
+  } while (missing.length > 0);
 
   // Topological sort
   const order: string[] = [];
@@ -130,8 +168,7 @@ const compile = async () => {
 
     const resolveImport = (specifier: string) => {
       if (specifier.startsWith("./") || specifier.startsWith("../")) {
-        let depName = specifier.replace(/^\.\//, "").replace(/\.ts$/, "");
-        // Support hash imports in source files
+        let depName = specifier.replace(/^\.\//, "").replace(/\.ts$/, "").replace(/^ts-notes\//, "");
         if (depName.startsWith("#") && nameByTsHash.has(depName)) {
           depName = nameByTsHash.get(depName)!;
         }
@@ -150,7 +187,7 @@ const compile = async () => {
     let tsNoteSrc = src;
     for (const m of src.matchAll(/from\s+["'](\.\/[^"']+)["']/g)) {
       const specifier = m[1];
-      let depName = specifier.replace(/^\.\//, "").replace(/\.ts$/, "");
+      let depName = specifier.replace(/^\.\//, "").replace(/\.ts$/, "").replace(/^ts-notes\//, "");
       if (depName.startsWith("#") && nameByTsHash.has(depName)) {
         depName = nameByTsHash.get(depName)!;
       }
@@ -161,20 +198,27 @@ const compile = async () => {
     }
     writeFileSync(resolve(TS_NOTES_DIR, `${tsHash}.ts`), tsNoteSrc);
 
+    // Upload TS note to server as a note (repository of TS sources)
+    await addNote(tsNoteSrc);
+
     // Write js-notes
     writeFileSync(resolve(JS_NOTES_DIR, `${jsHash}.js`), noteBody);
 
-    // Update source file header (only if changed)
-    const filePath = resolve(SCRIPTS_DIR, `${name}.ts`);
-    const currentRaw = readFileSync(filePath, "utf-8");
-    const header = makeHeader(tsHash, jsHash);
-    const expectedRaw = header + stripHeader(currentRaw);
-    if (currentRaw !== expectedRaw) {
-      writeFileSync(filePath, expectedRaw);
+    // Update source file header (only for local scripts, not pulled notes)
+    const isPulled = pulledHashes.has(name);
+    if (!isPulled) {
+      const filePath = resolve(SCRIPTS_DIR, `${name}.ts`);
+      const currentRaw = readFileSync(filePath, "utf-8");
+      const header = makeHeader(tsHash, jsHash);
+      const expectedRaw = header + stripHeader(currentRaw);
+      if (currentRaw !== expectedRaw) {
+        writeFileSync(filePath, expectedRaw);
+      }
     }
 
     const exportName = getExportName(src);
-    console.log(`  ${exportName}: ${name}.ts → ${jsHash}.js`);
+    const label = isPulled ? `${tsHash.slice(0, 14)}…` : `${name}.ts`;
+    console.log(`  ${exportName}: ${label} → ${jsHash}.js`);
 
     const existing = history.findIndex(e => e.filename === name);
     if (existing >= 0) history.splice(existing, 1);
