@@ -48,8 +48,8 @@ const getBoxRect = (box: VDom) => {
 };
 
 const click = (box: VDom) => {
-  assert(!!box.onEvent, "box should be clickable");
-  box.onEvent!({ type: "click", target: box });
+  assert(!!box.onclick, "box should be clickable");
+  box.onclick!({ type: "click", target: box });
 };
 
 it("renders svg vdom with one box per node and one path per edge", () => {

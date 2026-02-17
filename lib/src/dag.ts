@@ -1,4 +1,4 @@
-import { type VDom, type UPPER } from "./views.ts"
+import { type VDom, type UPPER, type MouseEvent } from "./views.ts"
 
 export type DagNode = { id: string, dom: VDom }
 
@@ -201,7 +201,7 @@ export const drawDag = (config: DagConfig): DagRender => {
     return txt || node.id
   }
 
-  const mkBox = (id: string, box: BoxData, highlight: boolean, onEvent?: VDom["onEvent"]): VDom => {
+  const mkBox = (id: string, box: BoxData, highlight: boolean, onclick?: VDom["onclick"]): VDom => {
     const node = nodeDataMap.get(id)
     const g = svgEl("g", {},
       svgEl("rect", {
@@ -217,7 +217,7 @@ export const drawDag = (config: DagConfig): DagRender => {
         fill: "var(--color)", "font-size": "2.6",
       })
     )
-    if (onEvent) g.onEvent = onEvent
+    if (onclick) g.onclick = onclick
     g.style.cursor = "pointer"
     return g
   }
@@ -233,7 +233,7 @@ export const drawDag = (config: DagConfig): DagRender => {
     const node = nodeDataMap.get(id)
     if (!node) return
     if (onClickBox) onClickBox(id, node, true)
-    if (node.dom.onEvent) node.dom.onEvent({ type: "click", target: node.dom })
+    if (node.dom.onclick) node.dom.onclick({ type: "click", target: node.dom })
   }
 
   const refresh = () => {
@@ -266,47 +266,51 @@ export const drawDag = (config: DagConfig): DagRender => {
       style: { cursor: "grab" },
       attrs: { viewBox: `${panX} ${panY} ${vpW} ${vpH}`, width: "100%", xmlns: "http://www.w3.org/2000/svg" },
       children: [],
-      onEvent: (e) => {
-        if (e.type === "mousedown" && e.clientX != null) {
+      onmousedown: (e) => {
+        if (e.clientX != null) {
           dragging = true
           dragMoved = false
           dragStartX = e.clientX
           dragStartY = e.clientY!
           panStartX = panX
           panStartY = panY
-        } else if (e.type === "mousemove" && dragging && e.clientX != null) {
-          const rect = (e.currentTarget as Element)?.getBoundingClientRect?.()
-          if (!rect) return
-          const dx = e.clientX - dragStartX, dy = e.clientY! - dragStartY
-          if (!dragMoved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return
-          dragMoved = true
-          panX = panStartX - dx * (vpW / rect.width)
-          panY = panStartY - dy * (vpH / rect.height)
-          clamp()
-          refresh()
-        } else if (e.type === "mouseup") {
-          const wasDragging = dragging && dragMoved
-          dragging = false
-          if (wasDragging) refresh()
-        } else if (e.type === "wheel") {
-          e.preventDefault?.()
-          const rect = (e.currentTarget as Element)?.getBoundingClientRect?.()
-          if (!rect) return
-          const zoom = (e.deltaY || 0) > 0 ? 1.1 : 0.9
-          const oldVpW = vpW, oldVpH = vpH
-          const newVpW = Math.max(MIN_VP_W, Math.min(maxVpW, oldVpW * zoom))
-          const newVpH = newVpW / aspect
-          const px = e.clientX != null ? Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) : 0.5
-          const py = e.clientY != null ? Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height)) : 0.5
-          const worldX = panX + px * oldVpW
-          const worldY = panY + py * oldVpH
-          vpW = newVpW
-          vpH = newVpH
-          panX = worldX - px * vpW
-          panY = worldY - py * vpH
-          clamp()
-          refresh()
         }
+      },
+      onmousemove: (e) => {
+        if (!dragging || e.clientX == null) return
+        const rect = (e.currentTarget as Element)?.getBoundingClientRect?.()
+        if (!rect) return
+        const dx = e.clientX - dragStartX, dy = e.clientY! - dragStartY
+        if (!dragMoved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return
+        dragMoved = true
+        panX = panStartX - dx * (vpW / rect.width)
+        panY = panStartY - dy * (vpH / rect.height)
+        clamp()
+        refresh()
+      },
+      onmouseup: () => {
+        const wasDragging = dragging && dragMoved
+        dragging = false
+        if (wasDragging) refresh()
+      },
+      onwheel: (e) => {
+        e.preventDefault?.()
+        const rect = (e.currentTarget as Element)?.getBoundingClientRect?.()
+        if (!rect) return
+        const zoom = (e.deltaY || 0) > 0 ? 1.1 : 0.9
+        const oldVpW = vpW, oldVpH = vpH
+        const newVpW = Math.max(MIN_VP_W, Math.min(maxVpW, oldVpW * zoom))
+        const newVpH = newVpW / aspect
+        const px = e.clientX != null ? Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) : 0.5
+        const py = e.clientY != null ? Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height)) : 0.5
+        const worldX = panX + px * oldVpW
+        const worldY = panY + py * oldVpH
+        vpW = newVpW
+        vpH = newVpH
+        panX = worldX - px * vpW
+        panY = worldY - py * vpH
+        clamp()
+        refresh()
       },
     }
 
@@ -321,8 +325,8 @@ export const drawDag = (config: DagConfig): DagRender => {
       activeIds.forEach((id) => (nodeEdges.get(id) || []).forEach((i) => lit.add(i)))
       svg.children = [
         ...chains.map((c, i) => mkArrow(c.points, lit.has(i))),
-        ...boxes.map(([id, box]) => mkBox(id, box, activeIds.has(id), (e) => {
-          if (e.type !== "click" || dragMoved) return
+        ...boxes.map(([id, box]) => mkBox(id, box, activeIds.has(id), () => {
+          if (dragMoved) return
           controls.setSelected(id, true, true)
         })),
       ]

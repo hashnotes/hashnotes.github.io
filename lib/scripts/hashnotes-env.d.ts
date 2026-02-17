@@ -20,7 +20,6 @@ type Jsonable =
 
 type VDom = import("../src/views.ts").VDom;
 type UPPER = import("../src/views.ts").UPPER;
-type DomEvent = import("../src/views.ts").DomEvent;
 
 declare const arg: any;
 declare const argRef: Ref;

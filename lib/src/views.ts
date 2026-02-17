@@ -11,7 +11,7 @@ const svgTags = new Set(["svg", "path", "g", "line", "polyline", "polygon", "cir
 const allowedAttributeNames = new Set(["viewBox","width","height","xmlns","d","fill","stroke","stroke-width","stroke-linecap","stroke-linejoin","stroke-dasharray","stroke-dashoffset","x","y","x1","y1","x2","y2","cx","cy","r","rx","ry","points","transform","opacity","font-size","font-family","font-weight","text-anchor","dominant-baseline","dx","dy"]);
 
 
-type MouseEvent = {
+export type MouseEvent = {
   type: MouseEventType
   target: VDom
   clientX?: number
@@ -29,11 +29,6 @@ type KeyboardEvent = {
   target: VDom,
 }
 
-export type DomEvent = MouseEvent | KeyboardEvent
-
-
-type Listener = (e: DomEvent) => void
-
 export type UPPER = {
   add: (parent: VDom, ...el: VDom[])=> void,
   del: (el: VDom) => void,
@@ -47,8 +42,14 @@ export type VDom = {
   style: Record<string, string>
   attrs: Record<string, string>
   children: VDom[]
-  onEvent?: Listener
-  value? : string
+  onclick?: MouseListener
+  onmousedown?: MouseListener
+  onmouseup?: MouseListener
+  onmousemove?: MouseListener
+  onwheel?: MouseListener
+  onkeydown?: KeyListener
+  onkeyup?: KeyListener
+  value?: string
 }
 
 type DomUpdate = { op: "DEL", el: VDom } | { op: "ADD", parent: VDom, el: VDom[]} | { op: "UPDATE", el: VDom }
@@ -76,7 +77,7 @@ export const renderDom = (mker: (ufn: UPPER) => VDom): HTMLElement => {
     Object.entries(dom.style).forEach(st=>el.style.setProperty(...st))
     mouseEvents.forEach((type) => el.addEventListener(type, (e) => {
       const me = e as globalThis.MouseEvent
-      if (dom.onEvent!= undefined) dom.onEvent!({
+      const event: MouseEvent = {
         type,
         target: doms.get(e.target as HTMLElement)!,
         clientX: me.clientX,
@@ -84,12 +85,19 @@ export const renderDom = (mker: (ufn: UPPER) => VDom): HTMLElement => {
         deltaY: type === "wheel" ? (me as globalThis.WheelEvent).deltaY : undefined,
         currentTarget: el,
         preventDefault: () => e.preventDefault(),
-      })
+      }
+      if (type === "click" && dom.onclick) dom.onclick(event)
+      else if (type === "mousedown" && dom.onmousedown) dom.onmousedown(event)
+      else if (type === "mouseup" && dom.onmouseup) dom.onmouseup(event)
+      else if (type === "mousemove" && dom.onmousemove) dom.onmousemove(event)
+      else if (type === "wheel" && dom.onwheel) dom.onwheel(event)
     }));
     keyboardEvents.forEach((type) => el.addEventListener(type, (e) =>{
       let {key, metaKey, shiftKey} = e as globalThis.KeyboardEvent;
       if (["INPUT" , "TEXTAREA"].includes((e.target as HTMLElement).tagName)) dom.value = (e.target as HTMLInputElement).value
-      if (dom.onEvent!=undefined) dom.onEvent({ type, key, metaKey, shiftKey, target: doms.get(e.target as HTMLElement)!})
+      const event: KeyboardEvent = { type, key, metaKey, shiftKey, target: doms.get(e.target as HTMLElement)!}
+      if (type === "keydown" && dom.onkeydown) dom.onkeydown(event)
+      else if (type === "keyup" && dom.onkeyup) dom.onkeyup(event)
     }))
     return el
 
@@ -122,6 +130,7 @@ type Subscriber = {
   "onkeydown"? : KeyListener
   "onmouseup"? : MouseListener
   "onmousedown"? : MouseListener
+  "onmousemove"? : MouseListener
   "onclick"? :MouseListener
   "onwheel"? : MouseListener
 };
@@ -131,12 +140,7 @@ type Content = string | VDom | Content[] | {id: string} | {style: Record<string,
 
 const mkDom = (tag: string) => (...content:Content[]) =>{
 
-  let listeners = new Map<KeyboardEventType | MouseEventType, Listener>();
-  let dm : VDom = {tag: tag, style: {}, attrs: {}, textContent: "", id: "", children: [], onEvent: e=> {
-    let fn = listeners.get(e.type);
-    if (fn) return fn(e)
-    }
-  };
+  let dm : VDom = {tag: tag, style: {}, attrs: {}, textContent: "", id: "", children: []};
   let addcontent = (c: Content) => {
     if (c instanceof Array) c.forEach(addcontent);
     else if (typeof c == "string") dm.textContent = c;
@@ -146,10 +150,13 @@ const mkDom = (tag: string) => (...content:Content[]) =>{
       if ("value" in c) dm.value = c.value;
       if ("attrs" in c) Object.entries(c.attrs).forEach(([k, v]) => dm.attrs[k] = v)
       if ("style" in c) Object.entries(c.style).forEach(s=> dm.style[s[0].replace(/([A-Z])/g, '-$1')] = s[1])
-      Object.entries(c).forEach(([k,v])=>{
-
-        if (k.startsWith("on")) listeners.set(k.slice(2) as KeyboardEventType, v as Listener)
-      })
+      if ("onclick" in c) dm.onclick = (c as Subscriber).onclick
+      if ("onmousedown" in c) dm.onmousedown = (c as Subscriber).onmousedown
+      if ("onmouseup" in c) dm.onmouseup = (c as Subscriber).onmouseup
+      if ("onmousemove" in c) dm.onmousemove = (c as Subscriber).onmousemove
+      if ("onwheel" in c) dm.onwheel = (c as Subscriber).onwheel
+      if ("onkeydown" in c) dm.onkeydown = (c as Subscriber).onkeydown
+      if ("onkeyup" in c) dm.onkeyup = (c as Subscriber).onkeyup
     }
   }
 

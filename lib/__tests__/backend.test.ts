@@ -97,8 +97,7 @@ it("client view runner: returns (upper)=>VDom and can call upper.update", async 
     );
     const label = root.children[0];
     const inc = root.children[1];
-    inc.onEvent = (e) => {
-      if (e.type !== "click") return;
+    inc.onclick = () => {
       label.textContent = "clicked";
       upper.update(root);
     };
@@ -114,7 +113,7 @@ it("client view runner: returns (upper)=>VDom and can call upper.update", async 
   });
 
   assertEq(root.tag, "div");
-  root.children[1].onEvent?.({ type: "click", target: root.children[1] });
+  root.children[1].onclick?.({ type: "click", target: root.children[1] });
   assertEq(root.children[0].textContent, "clicked");
   assertEq(updates.length, 1);
 });
