@@ -44,17 +44,17 @@ let doms = /* @__PURE__ */ new WeakMap();
 let elements = /* @__PURE__ */ new WeakMap();
 const renderDom = (mker) => {
   const render = (dom) => {
-    const el = svgTags.has(dom.tag) ? document.createElementNS(svgNamespace, dom.tag) : document.createElement(dom.tag);
-    el.textContent = dom.textContent;
-    if ((el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) && dom.value) el.value = dom.value;
-    elements.set(dom, el);
-    doms.set(el, dom);
-    el.append(...dom.children.map((c) => render(c)));
+    const el2 = svgTags.has(dom.tag) ? document.createElementNS(svgNamespace, dom.tag) : document.createElement(dom.tag);
+    el2.textContent = dom.textContent;
+    if ((el2 instanceof HTMLInputElement || el2 instanceof HTMLTextAreaElement) && dom.value) el2.value = dom.value;
+    elements.set(dom, el2);
+    doms.set(el2, dom);
+    el2.append(...dom.children.map((c) => render(c)));
     Object.entries(dom.attrs).forEach(([k, v]) => {
-      if (allowedAttributeNames.has(k)) el.setAttribute(k, v);
+      if (allowedAttributeNames.has(k)) el2.setAttribute(k, v);
     });
-    Object.entries(dom.style).forEach((st) => el.style.setProperty(...st));
-    mouseEvents.forEach((type) => el.addEventListener(type, (e) => {
+    Object.entries(dom.style).forEach((st) => el2.style.setProperty(...st));
+    mouseEvents.forEach((type) => el2.addEventListener(type, (e) => {
       const me = e;
       if (dom.onEvent != void 0) dom.onEvent({
         type,
@@ -62,31 +62,32 @@ const renderDom = (mker) => {
         clientX: me.clientX,
         clientY: me.clientY,
         deltaY: type === "wheel" ? me.deltaY : void 0,
-        currentTarget: el,
+        currentTarget: el2,
         preventDefault: () => e.preventDefault()
       });
     }));
-    keyboardEvents.forEach((type) => el.addEventListener(type, (e) => {
+    keyboardEvents.forEach((type) => el2.addEventListener(type, (e) => {
       let { key, metaKey, shiftKey } = e;
       if (["INPUT", "TEXTAREA"].includes(e.target.tagName)) dom.value = e.target.value;
       if (dom.onEvent != void 0) dom.onEvent({ type, key, metaKey, shiftKey, target: doms.get(e.target) });
     }));
-    return el;
+    return el2;
   };
   return render(mker({
-    add: (parent, ...el) => {
+    add: (parent, ...el2) => {
       var _a;
-      (_a = elements.get(parent)) == null ? void 0 : _a.append(...el.map((e) => render(e)));
+      (_a = elements.get(parent)) == null ? void 0 : _a.append(...el2.map((e) => render(e)));
     },
-    del: (el) => {
+    del: (el2) => {
       var _a;
-      doms.delete(elements.get(el));
-      (_a = elements.get(el)) == null ? void 0 : _a.remove();
-      elements.delete(el);
+      doms.delete(elements.get(el2));
+      (_a = elements.get(el2)) == null ? void 0 : _a.remove();
+      elements.delete(el2);
     },
-    update: (el) => {
-      let oldel = elements.get(el);
-      oldel.replaceWith(render(el));
+    update: (el2) => {
+      let oldel = elements.get(el2);
+      if (!oldel) return;
+      oldel.replaceWith(render(el2));
       doms.delete(oldel);
     }
   }));
@@ -236,12 +237,12 @@ const hashData = (value) => {
   }
   throw new Error(`unsupported type for hashing: ${typeof value}`);
 };
-const DB_NAME$1 = "hashnotes";
-const env$1 = () => {
+const DB_NAME = "hashnotes";
+const env = () => {
   var _a;
   return (_a = globalThis == null ? void 0 : globalThis.process) == null ? void 0 : _a.env;
 };
-const KV$1 = (() => {
+const KV = (() => {
   try {
     if (typeof localStorage !== "undefined" && localStorage) return localStorage;
   } catch {
@@ -257,100 +258,101 @@ const KV$1 = (() => {
     }
   };
 })();
-let SERVER$1 = (() => {
-  const e = env$1();
+let SERVER = (() => {
+  const e = env();
   const v = e == null ? void 0 : e.HASHNOTES_SERVER;
-  return v === "local" || v === "maincloud" ? v : KV$1.getItem("db_preset") === "local" ? "local" : "maincloud";
+  return v === "local" || v === "maincloud" ? v : KV.getItem("db_preset") === "local" ? "local" : "maincloud";
 })();
-const baseUrl$1 = () => ({
+const baseUrl = () => ({
   local: "http://localhost:3000",
   maincloud: "https://maincloud.spacetimedb.com"
-})[SERVER$1];
-const accessToken$1 = async () => {
-  let tokenkey = () => `access_token:${SERVER$1}`;
+})[SERVER];
+const accessToken = async () => {
+  let tokenkey = () => `access_token:${SERVER}`;
   let tkey = tokenkey();
-  const e = env$1();
-  const envToken = (SERVER$1 === "local" ? e == null ? void 0 : e.HASHNOTES_ACCESS_TOKEN_LOCAL : e == null ? void 0 : e.HASHNOTES_ACCESS_TOKEN_MAINCLOUD) ?? (e == null ? void 0 : e.HASHNOTES_ACCESS_TOKEN);
+  const e = env();
+  const envToken = (SERVER === "local" ? e == null ? void 0 : e.HASHNOTES_ACCESS_TOKEN_LOCAL : e == null ? void 0 : e.HASHNOTES_ACCESS_TOKEN_MAINCLOUD) ?? (e == null ? void 0 : e.HASHNOTES_ACCESS_TOKEN);
   if (envToken) return envToken;
-  let token = KV$1.getItem(tkey);
+  let token = KV.getItem(tkey);
   if (!token) {
-    token = await fetch(`${baseUrl$1()}/v1/identity`, { method: "POST", headers: { "Content-Type": "application/json" } }).then((r) => r.json()).then((j) => j.token || null);
-    if (tkey != tokenkey()) return accessToken$1();
-    if (token) KV$1.setItem(tkey, token);
+    token = await fetch(`${baseUrl()}/v1/identity`, { method: "POST", headers: { "Content-Type": "application/json" } }).then((r) => r.json()).then((j) => j.token || null);
+    if (tkey != tokenkey()) return accessToken();
+    if (token) KV.setItem(tkey, token);
   }
   return token;
 };
-console.log("connect to", SERVER$1);
-const call$1 = async (name, payload) => {
-  const res = await fetch(`${baseUrl$1()}/v1/database/${DB_NAME$1}/call/${name}`, {
+let getServer = () => SERVER;
+console.log("connect to", SERVER);
+const call = async (name, payload) => {
+  const res = await fetch(`${baseUrl()}/v1/database/${DB_NAME}/call/${name}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: await accessToken$1().then((t) => t ? `Bearer ${t}` : "") },
+    headers: { "Content-Type": "application/json", Authorization: await accessToken().then((t) => t ? `Bearer ${t}` : "") },
     body: JSON.stringify(payload)
   });
   const text2 = await res.text();
   if (!res.ok) throw new Error(text2);
   return text2;
 };
-const noteCache$1 = /* @__PURE__ */ new Map();
-const addInFlight$1 = /* @__PURE__ */ new Map();
-const getInFlight$1 = /* @__PURE__ */ new Map();
+const noteCache = /* @__PURE__ */ new Map();
+const addInFlight = /* @__PURE__ */ new Map();
+const getInFlight = /* @__PURE__ */ new Map();
 const addNote = async (data2, options = {}) => {
   const { skipCache = false } = options;
   const hash = hashData(data2);
   if (!skipCache) {
-    const cached = noteCache$1.get(hash);
+    const cached = noteCache.get(hash);
     if (cached !== void 0) return hash;
-    const pending = addInFlight$1.get(hash);
+    const pending = addInFlight.get(hash);
     if (pending) return pending;
   }
   const p = (async () => {
-    await call$1("add_note", { data: tojson(data2) });
-    if (!skipCache) noteCache$1.set(hash, data2);
+    await call("add_note", { data: tojson(data2) });
+    if (!skipCache) noteCache.set(hash, data2);
     return hash;
   })();
-  if (!skipCache) addInFlight$1.set(hash, p);
+  if (!skipCache) addInFlight.set(hash, p);
   try {
     return await p;
   } finally {
-    if (!skipCache) addInFlight$1.delete(hash);
+    if (!skipCache) addInFlight.delete(hash);
   }
 };
-const getNote$1 = async (hash, options = {}) => {
+const getNote = async (hash, options = {}) => {
   const { skipCache = false } = options;
   if (!skipCache) {
-    const cached = noteCache$1.get(hash);
+    const cached = noteCache.get(hash);
     if (cached !== void 0) return cached;
-    const addPending = addInFlight$1.get(hash);
+    const addPending = addInFlight.get(hash);
     if (addPending) {
       try {
         await addPending;
-        const afterAdd = noteCache$1.get(hash);
+        const afterAdd = noteCache.get(hash);
         if (afterAdd !== void 0) return afterAdd;
       } catch {
       }
     }
-    const pending = getInFlight$1.get(hash);
+    const pending = getInFlight.get(hash);
     if (pending) return pending;
   }
   const p = (async () => {
-    const wireValue = await call$1("get_note", { hash });
+    const wireValue = await call("get_note", { hash });
     const data2 = fromjson(fromjson(wireValue));
-    if (!skipCache) noteCache$1.set(hash, data2);
+    if (!skipCache) noteCache.set(hash, data2);
     return data2;
   })();
-  if (!skipCache) getInFlight$1.set(hash, p);
+  if (!skipCache) getInFlight.set(hash, p);
   try {
     return await p;
   } finally {
-    if (!skipCache) getInFlight$1.delete(hash);
+    if (!skipCache) getInFlight.delete(hash);
   }
 };
-const deRef = async (value) => isRef(value) ? getNote$1(value).then(deRef) : value;
+const deRef = async (value) => isRef(value) ? getNote(value).then(deRef) : value;
 const asRef = async (value) => isRef(value) ? value : addNote(value);
 const callNote = async (fn, arg) => {
   const fnRef = await asRef(fn);
   const argRef = await asRef(arg === void 0 ? null : arg);
-  return await call$1("call_note", { fn: fnRef, arg: argRef }).then(fromjson).then(deRef);
+  return await call("call_note", { fn: fnRef, arg: argRef }).then(fromjson).then(deRef);
 };
 var astralIdentifierCodes = [509, 0, 227, 0, 150, 4, 294, 9, 1368, 2, 2, 1, 6, 3, 41, 2, 5, 0, 166, 1, 574, 3, 9, 9, 7, 9, 32, 4, 318, 1, 80, 3, 71, 10, 50, 3, 123, 2, 54, 14, 32, 10, 3, 1, 11, 3, 46, 10, 8, 0, 46, 9, 7, 2, 37, 13, 2, 9, 6, 1, 45, 0, 13, 2, 49, 13, 9, 3, 2, 11, 83, 11, 7, 0, 3, 0, 158, 11, 6, 9, 7, 3, 56, 1, 2, 6, 3, 1, 3, 2, 10, 0, 11, 1, 3, 6, 4, 4, 68, 8, 2, 0, 3, 0, 2, 3, 2, 4, 2, 0, 15, 1, 83, 17, 10, 9, 5, 0, 82, 19, 13, 9, 214, 6, 3, 8, 28, 1, 83, 16, 16, 9, 82, 12, 9, 9, 7, 19, 58, 14, 5, 9, 243, 14, 166, 9, 71, 5, 2, 1, 3, 3, 2, 0, 2, 1, 13, 9, 120, 6, 3, 6, 4, 0, 29, 9, 41, 6, 2, 3, 9, 0, 10, 10, 47, 15, 343, 9, 54, 7, 2, 7, 17, 9, 57, 21, 2, 13, 123, 5, 4, 0, 2, 1, 2, 6, 2, 0, 9, 9, 49, 4, 2, 1, 2, 4, 9, 9, 330, 3, 10, 1, 2, 0, 49, 6, 4, 4, 14, 10, 5350, 0, 7, 14, 11465, 27, 2343, 9, 87, 9, 39, 4, 60, 6, 26, 9, 535, 9, 470, 0, 2, 54, 8, 3, 82, 0, 12, 1, 19628, 1, 4178, 9, 519, 45, 3, 22, 543, 4, 4, 5, 9, 7, 3, 6, 31, 3, 149, 2, 1418, 49, 513, 54, 5, 49, 9, 0, 15, 0, 23, 4, 2, 14, 1361, 6, 2, 16, 3, 6, 2, 1, 2, 4, 101, 0, 161, 6, 10, 9, 357, 0, 62, 13, 499, 13, 245, 1, 2, 9, 726, 6, 110, 6, 6, 9, 4759, 9, 787719, 239];
 var astralIdentifierStartCodes = [0, 11, 2, 25, 2, 18, 2, 1, 2, 14, 3, 13, 35, 122, 70, 52, 268, 28, 4, 48, 48, 31, 14, 29, 6, 37, 11, 29, 3, 35, 5, 7, 2, 4, 43, 157, 19, 35, 5, 35, 5, 39, 9, 51, 13, 10, 2, 14, 2, 6, 2, 1, 2, 10, 2, 14, 2, 6, 2, 1, 4, 51, 13, 310, 10, 21, 11, 7, 25, 5, 2, 41, 2, 8, 70, 5, 3, 0, 2, 43, 2, 1, 4, 0, 3, 22, 11, 22, 10, 30, 66, 18, 2, 1, 11, 21, 11, 25, 71, 55, 7, 1, 65, 0, 16, 3, 2, 2, 2, 28, 43, 28, 4, 28, 36, 7, 2, 27, 28, 53, 11, 21, 11, 18, 14, 17, 111, 72, 56, 50, 14, 50, 14, 35, 39, 27, 10, 22, 251, 41, 7, 1, 17, 2, 60, 28, 11, 0, 9, 21, 43, 17, 47, 20, 28, 22, 13, 52, 58, 1, 3, 0, 14, 44, 33, 24, 27, 35, 30, 0, 3, 0, 9, 34, 4, 0, 13, 47, 15, 3, 22, 0, 2, 0, 36, 17, 2, 24, 20, 1, 64, 6, 2, 0, 2, 3, 2, 14, 2, 9, 8, 46, 39, 7, 3, 1, 3, 21, 2, 6, 2, 1, 2, 4, 4, 0, 19, 0, 13, 4, 31, 9, 2, 0, 3, 0, 2, 37, 2, 0, 26, 0, 2, 0, 45, 52, 19, 3, 21, 2, 31, 47, 21, 1, 2, 0, 185, 46, 42, 3, 37, 47, 21, 0, 60, 42, 14, 0, 72, 26, 38, 6, 186, 43, 117, 63, 32, 7, 3, 0, 3, 7, 2, 1, 2, 23, 16, 0, 2, 0, 95, 7, 3, 38, 17, 0, 2, 0, 29, 0, 11, 39, 8, 0, 22, 0, 12, 45, 20, 0, 19, 72, 200, 32, 32, 8, 2, 36, 18, 0, 50, 29, 113, 6, 2, 1, 2, 37, 22, 0, 26, 5, 2, 1, 2, 31, 15, 0, 328, 18, 16, 0, 2, 12, 2, 33, 125, 0, 80, 921, 103, 110, 18, 195, 2637, 96, 16, 1071, 18, 5, 26, 3994, 6, 582, 6842, 29, 1763, 568, 8, 30, 18, 78, 18, 29, 19, 47, 17, 3, 32, 20, 6, 18, 433, 44, 212, 63, 129, 74, 6, 0, 67, 12, 65, 1, 2, 0, 29, 6135, 9, 1237, 42, 9, 8936, 3, 2, 6, 2, 1, 2, 290, 16, 0, 30, 2, 3, 0, 15, 3, 9, 395, 2309, 106, 6, 12, 4, 8, 8, 9, 5991, 84, 2, 70, 2, 1, 3, 0, 3, 1, 3, 3, 2, 11, 2, 0, 2, 6, 2, 64, 2, 3, 3, 7, 2, 6, 2, 27, 2, 3, 2, 4, 2, 0, 4, 6, 2, 339, 3, 24, 2, 24, 2, 30, 2, 24, 2, 30, 2, 24, 2, 30, 2, 24, 2, 30, 2, 24, 2, 7, 1845, 30, 7, 5, 262, 61, 147, 44, 11, 6, 17, 0, 322, 29, 19, 43, 485, 27, 229, 29, 3, 0, 496, 6, 2, 3, 2, 1, 2, 14, 2, 196, 60, 67, 8, 0, 1205, 3, 2, 26, 2, 1, 2, 0, 3, 0, 2, 9, 2, 3, 2, 0, 2, 0, 7, 0, 5, 0, 2, 0, 2, 0, 2, 2, 2, 1, 2, 0, 3, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 1, 2, 0, 3, 3, 2, 6, 2, 3, 2, 3, 2, 0, 2, 9, 2, 16, 6, 2, 2, 4, 2, 16, 4421, 42719, 33, 4153, 7, 221, 3, 5761, 15, 7472, 16, 621, 2467, 541, 1507, 4938, 6, 4191];
@@ -5973,7 +5975,7 @@ const validateScopes = (program, allowedGlobals = []) => {
         visitExpr(e.argument);
         return;
       case "ArrayExpression":
-        e.elements.forEach((el) => visitExpr(el));
+        e.elements.forEach((el2) => visitExpr(el2));
         return;
       case "ObjectExpression":
         e.properties.forEach((p) => {
@@ -6104,7 +6106,7 @@ const validateNoPrototype = (program) => {
         visitExpr(e.argument);
         return;
       case "ArrayExpression":
-        e.elements.forEach((el) => visitExpr(el));
+        e.elements.forEach((el2) => visitExpr(el2));
         return;
       case "ObjectExpression":
         e.properties.forEach((p) => {
@@ -6236,12 +6238,12 @@ const toPattern = (node) => {
     case "ArrayPattern": {
       const raw = asNodeList(node.elements ?? [], "ArrayPattern.elements");
       const elements2 = [];
-      for (const el of raw) {
-        if (el.type === "Identifier" || el.type === "RestElement" || el.type === "ArrayPattern" || el.type === "ObjectPattern") {
-          elements2.push(toPattern(el));
+      for (const el2 of raw) {
+        if (el2.type === "Identifier" || el2.type === "RestElement" || el2.type === "ArrayPattern" || el2.type === "ObjectPattern") {
+          elements2.push(toPattern(el2));
           continue;
         }
-        unsupported(el, "Unsupported array pattern element");
+        unsupported(el2, "Unsupported array pattern element");
       }
       return { type: "ArrayPattern", elements: elements2 };
     }
@@ -6280,7 +6282,7 @@ const toExpr = (node) => {
     case "ArrayExpression": {
       const raw = asNodeList(node.elements ?? [], "ArrayExpression.elements");
       const elements2 = raw.map(
-        (el) => el.type === "SpreadElement" ? toSpreadElement(el) : toExpr(el)
+        (el2) => el2.type === "SpreadElement" ? toSpreadElement(el2) : toExpr(el2)
       );
       return { type: "ArrayExpression", elements: elements2 };
     }
@@ -6683,7 +6685,7 @@ const validateNoReservedRuntimeNames = (program, reservedNames) => {
         visitExpr(e.argument);
         return;
       case "ArrayExpression":
-        e.elements.forEach((el) => visitExpr(el));
+        e.elements.forEach((el2) => visitExpr(el2));
         return;
       case "ObjectExpression":
         e.properties.forEach((p) => {
@@ -6782,13 +6784,13 @@ const validateNoReservedRuntimeNames = (program, reservedNames) => {
   program.body.forEach(visitStmt);
   return errors;
 };
-const renderRunnerWithFuelSharedAsync = (program, fuelRefName = "__fuel") => {
+const renderRunnerWithFuelShared = (program, fuelRefName = "__fuel") => {
   assertSafeIdent(fuelRefName);
   const reservedErrs = validateNoReservedRuntimeNames(program, [fuelRefName, "__burn"]);
   if (reservedErrs.length) throw new Error(reservedErrs.join(", "));
   const prelude = `const __burn = () => { if (--${fuelRefName}.value < 0) throw new Error("fuel exhausted"); };`;
   const body = program.body.map((s) => renderStmt(s, true)).join("");
-  return `${prelude}const __run = async () => {${body}}; return __run().then(ok => ({ ok, fuel: ${fuelRefName}.value })).catch(err => ({ err: String(err), fuel: ${fuelRefName}.value }));`;
+  return `${prelude}const __run = () => {${body}}; try { const ok = __run(); return { ok, fuel: ${fuelRefName}.value }; } catch (err) { return { err: String(err), fuel: ${fuelRefName}.value }; }`;
 };
 const SAFE_OBJECT = (() => {
   const safe = /* @__PURE__ */ Object.create(null);
@@ -6836,11 +6838,11 @@ const mapFunctionArgs = (params, callArgs) => {
   }
   return env2;
 };
-const makeSafeFunctionAsync = (fuelRef, outerGlobals) => (...ctorArgs) => {
+const makeSafeFunctionSync = (fuelRef, outerGlobals) => (...ctorArgs) => {
   const { params, body } = parseFunctionCtor(ctorArgs);
-  return async (...callArgs) => {
+  return (...callArgs) => {
     const localEnv = { ...outerGlobals, ...mapFunctionArgs(params, callArgs) };
-    const res = await runWithFuelSharedAsync(body, fuelRef, localEnv);
+    const res = runWithFuelShared(body, fuelRef, localEnv);
     if ("err" in res) throw new Error(res.err);
     return res.ok;
   };
@@ -6853,7 +6855,7 @@ const withBuiltins = (env2, fuelRef, mode) => {
   };
   return {
     ...baseGlobals,
-    Function: makeSafeFunctionAsync(fuelRef, baseGlobals)
+    Function: makeSafeFunctionSync(fuelRef, baseGlobals)
   };
 };
 const stringifyError = (err) => {
@@ -6873,25 +6875,30 @@ ${cleanStack}` : prefix;
   }
   return String(err);
 };
-const runWithFuelSharedAsync = async (src, fuelRef, env2 = {}, fuelRefName = "__fuel") => {
+const runWithFuelShared = (src, fuelRef, env2 = {}, fuelRefName = "__fuel") => {
   try {
-    const runtimeEnv = withBuiltins(env2, fuelRef, "async");
+    const runtimeEnv = withBuiltins(env2, fuelRef, "sync");
     const program = parse3(src);
     const protoErrs = validateNoPrototype(program);
     if (protoErrs.length) return { err: "prototype access", fuel: fuelRef.value };
     const scopeErrs = validateScopes(program, [...Object.keys(runtimeEnv), fuelRefName]);
     if (scopeErrs.length) return { err: scopeErrs.join(", "), fuel: fuelRef.value };
-    const code = renderRunnerWithFuelSharedAsync(program, fuelRefName);
+    const code = renderRunnerWithFuelShared(program, fuelRefName);
     const fullEnv = { ...runtimeEnv, [fuelRefName]: fuelRef };
-    const fn = new Function(...Object.keys(fullEnv), code);
-    return await fn(...Object.values(fullEnv));
+    return new Function(...Object.keys(fullEnv), code)(...Object.values(fullEnv));
   } catch (err) {
     return { err: stringifyError(err), fuel: fuelRef.value };
   }
 };
 const localStoreKey = (fnRef, key) => `${fnRef}|${hashData(key)}`;
-const createLocalExecutor = (options) => {
+const parseDeps = (src) => {
+  const m = src.match(/^const __deps = \[([^\]]*)\];/);
+  if (!m) return [];
+  return [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+};
+const callViewClient = async (fn, _arg, options = {}) => {
   const fuelRef = { value: options.fuel ?? 1e5 };
+  const sourceCache = /* @__PURE__ */ new Map();
   const memStore = /* @__PURE__ */ new Map();
   const ls = (() => {
     try {
@@ -6900,149 +6907,60 @@ const createLocalExecutor = (options) => {
       return void 0;
     }
   })();
-  const callLocal = async (fnInput, argInput) => {
-    const fnRef = await asRef(fnInput);
-    const argRef = await asRef(argInput);
-    const fnNote = await deRef(fnRef);
-    if (typeof fnNote !== "string") throw new Error("function note must resolve to a string");
-    const argNote = await deRef(argRef);
-    const store = {
-      get: (key) => {
-        const skey = `hashnotes:store:${localStoreKey(fnRef, key)}`;
-        const raw = ls == null ? void 0 : ls.getItem(skey);
-        if (raw != null) return fromjson(raw);
-        return memStore.get(skey);
-      },
-      set: (key, value) => {
-        const skey = `hashnotes:store:${localStoreKey(fnRef, key)}`;
-        const v = value;
-        if (ls) ls.setItem(skey, JSON.stringify(v));
-        else memStore.set(skey, v);
-        return v;
-      }
+  const fnRef = await asRef(fn);
+  const fnNote = await deRef(fnRef);
+  if (typeof fnNote !== "string") throw new Error("view note must resolve to a string");
+  const prefetch = async (ref2) => {
+    if (sourceCache.has(ref2)) return;
+    const src = await deRef(ref2);
+    if (typeof src !== "string") throw new Error("prefetch: note must be a string");
+    sourceCache.set(ref2, src);
+    for (const dep of parseDeps(src)) await prefetch(dep);
+  };
+  for (const dep of parseDeps(fnNote)) await prefetch(dep);
+  const store = {
+    get: (key) => {
+      const skey = `hashnotes:store:${localStoreKey(fnRef, key)}`;
+      const raw = ls == null ? void 0 : ls.getItem(skey);
+      if (raw != null) return fromjson(raw);
+      return memStore.get(skey);
+    },
+    set: (key, value) => {
+      const skey = `hashnotes:store:${localStoreKey(fnRef, key)}`;
+      const v = value;
+      if (ls) ls.setItem(skey, JSON.stringify(v));
+      else memStore.set(skey, v);
+      return v;
+    }
+  };
+  const remote = async (remoteFn, remoteArg) => callNote(remoteFn, remoteArg === void 0 ? null : remoteArg);
+  const getNoteSync = (ref2) => {
+    const src = sourceCache.get(ref2);
+    if (src === void 0) throw new Error(`getNoteSync: note ${ref2} not in cache`);
+    return (callArg) => {
+      const result = runWithFuelShared(src, fuelRef, { ...baseEnv, arg: callArg });
+      if ("err" in result) throw new Error(result.err);
+      return result.ok;
     };
-    const remote = async (remoteFn, remoteArg) => callNote(remoteFn, remoteArg === void 0 ? null : remoteArg);
-    const result = await runWithFuelSharedAsync(
-      fnNote,
-      fuelRef,
-      {
-        ...options.env ?? {},
-        arg: argNote,
-        argRef,
-        call: callLocal,
-        callNote: callLocal,
-        remote,
-        store,
-        addNote,
-        getNote: getNote$1,
-        asRef,
-        deref: deRef,
-        hashData,
-        fromjson,
-        HTML
-      }
-    );
+  };
+  const baseEnv = {
+    ...options.env ?? {},
+    remote,
+    getNoteSync,
+    store,
+    addNote,
+    getNote,
+    asRef,
+    deref: deRef,
+    hashData,
+    fromjson,
+    HTML
+  };
+  return (upper) => {
+    const result = runWithFuelShared(fnNote, fuelRef, { ...baseEnv, arg: upper });
     if ("err" in result) throw new Error(result.err);
     return result.ok;
   };
-  return callLocal;
-};
-const callViewClient = async (fn, arg, options = {}) => {
-  const callLocal = createLocalExecutor(options);
-  const result = await callLocal(fn, arg === void 0 ? null : arg);
-  if (typeof result !== "function") {
-    throw new Error("view function must return (upper) => VDom");
-  }
-  return result;
-};
-const DB_NAME = "hashnotes";
-const env = () => {
-  var _a;
-  return (_a = globalThis == null ? void 0 : globalThis.process) == null ? void 0 : _a.env;
-};
-const KV = (() => {
-  try {
-    if (typeof localStorage !== "undefined" && localStorage) return localStorage;
-  } catch {
-  }
-  const m = /* @__PURE__ */ new Map();
-  return {
-    getItem: (k) => m.get(k) ?? null,
-    setItem: (k, v) => {
-      m.set(k, v);
-    },
-    removeItem: (k) => {
-      m.delete(k);
-    }
-  };
-})();
-let SERVER = (() => {
-  const e = env();
-  const v = e == null ? void 0 : e.HASHNOTES_SERVER;
-  return v === "local" || v === "maincloud" ? v : KV.getItem("db_preset") === "local" ? "local" : "maincloud";
-})();
-const baseUrl = () => ({
-  local: "http://localhost:3000",
-  maincloud: "https://maincloud.spacetimedb.com"
-})[SERVER];
-const accessToken = async () => {
-  let tokenkey = () => `access_token:${SERVER}`;
-  let tkey = tokenkey();
-  const e = env();
-  const envToken = (SERVER === "local" ? e == null ? void 0 : e.HASHNOTES_ACCESS_TOKEN_LOCAL : e == null ? void 0 : e.HASHNOTES_ACCESS_TOKEN_MAINCLOUD) ?? (e == null ? void 0 : e.HASHNOTES_ACCESS_TOKEN);
-  if (envToken) return envToken;
-  let token = KV.getItem(tkey);
-  if (!token) {
-    token = await fetch(`${baseUrl()}/v1/identity`, { method: "POST", headers: { "Content-Type": "application/json" } }).then((r) => r.json()).then((j) => j.token || null);
-    if (tkey != tokenkey()) return accessToken();
-    if (token) KV.setItem(tkey, token);
-  }
-  return token;
-};
-let getServer = () => SERVER;
-console.log("connect to", SERVER);
-const call = async (name, payload) => {
-  const res = await fetch(`${baseUrl()}/v1/database/${DB_NAME}/call/${name}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: await accessToken().then((t) => t ? `Bearer ${t}` : "") },
-    body: JSON.stringify(payload)
-  });
-  const text2 = await res.text();
-  if (!res.ok) throw new Error(text2);
-  return text2;
-};
-const noteCache = /* @__PURE__ */ new Map();
-const addInFlight = /* @__PURE__ */ new Map();
-const getInFlight = /* @__PURE__ */ new Map();
-const getNote = async (hash, options = {}) => {
-  const { skipCache = false } = options;
-  if (!skipCache) {
-    const cached = noteCache.get(hash);
-    if (cached !== void 0) return cached;
-    const addPending = addInFlight.get(hash);
-    if (addPending) {
-      try {
-        await addPending;
-        const afterAdd = noteCache.get(hash);
-        if (afterAdd !== void 0) return afterAdd;
-      } catch {
-      }
-    }
-    const pending = getInFlight.get(hash);
-    if (pending) return pending;
-  }
-  const p = (async () => {
-    const wireValue = await call("get_note", { hash });
-    const data2 = fromjson(fromjson(wireValue));
-    if (!skipCache) noteCache.set(hash, data2);
-    return data2;
-  })();
-  if (!skipCache) getInFlight.set(hash, p);
-  try {
-    return await p;
-  } finally {
-    if (!skipCache) getInFlight.delete(hash);
-  }
 };
 const parseRefFromPath = (pathname) => {
   const segment = pathname.replace(/^\/+/, "").split("/")[0];
@@ -7058,10 +6976,9 @@ const renderRef = async (mount, ref2) => {
   let note = await getNote(ref2);
   try {
     const view = await callViewClient(ref2, {});
-    const el = renderDom(view);
+    const el2 = renderDom(view);
     mount.innerHTML = "";
-    mount.append(renderDom((u) => HTML.pre(note)));
-    mount.append(el);
+    mount.append(el2);
   } catch (err) {
     mount.innerHTML = "";
     mount.append(renderDom((u) => HTML.pre(`failed to render note: ${ref2}
@@ -7069,15 +6986,20 @@ ${err}
 ${tojson(note)}`)));
   }
 };
+const el = (tag, text2) => {
+  const e = document.createElement(tag);
+  if (text2) e.textContent = text2;
+  return e;
+};
+const fetchHistory = async () => {
+  const res = await fetch(`${DEV_URL}/history`);
+  return JSON.parse(await res.text());
+};
+const latestView = (history) => [...history].reverse().find((e) => e.exportName === "view" || e.exportName === "default");
 const bootLive = async (mount) => {
   mount.innerHTML = "";
   mount.textContent = "Connecting to dev server...";
   let lastJson = "";
-  const el = (tag, text2) => {
-    const e = document.createElement(tag);
-    if (text2) e.textContent = text2;
-    return e;
-  };
   const poll = async () => {
     try {
       const res = await fetch(`${DEV_URL}/history`);
@@ -7096,6 +7018,12 @@ const bootLive = async (mount) => {
           a.href = `/${entry.jsHash.slice(1)}`;
           a.textContent = entry.exportName;
           row.append(a);
+          const liveLink = document.createElement("a");
+          liveLink.href = "/live/view";
+          liveLink.textContent = " (live)";
+          liveLink.style.opacity = "0.5";
+          liveLink.style.fontSize = "0.85em";
+          row.append(liveLink);
         } else {
           const span = el("span", entry.exportName);
           span.style.opacity = "0.5";
@@ -7111,11 +7039,49 @@ const bootLive = async (mount) => {
     }
   };
   await poll();
-  setInterval(poll, 2e3);
+  setInterval(poll, 500);
+};
+const bootLiveView = async (mount) => {
+  mount.innerHTML = "";
+  mount.textContent = "Connecting to dev server...";
+  let lastJsHash = "";
+  const poll = async () => {
+    try {
+      const history = await fetchHistory();
+      const view = latestView(history);
+      if (!view) {
+        mount.innerHTML = "";
+        mount.append(el("p", "No view found in compiled notes."));
+        return;
+      }
+      if (view.jsHash === lastJsHash) return;
+      lastJsHash = view.jsHash;
+      const bar = el("div");
+      bar.style.cssText = "padding:4px 8px;font-size:0.85em;opacity:0.6;";
+      const permLink = document.createElement("a");
+      permLink.href = `/${view.jsHash.slice(1)}`;
+      permLink.textContent = `${view.filename ?? view.exportName} → ${view.jsHash.slice(0, 14)}…`;
+      bar.append(permLink);
+      const viewFn = await callViewClient(view.jsHash, {});
+      const rendered = renderDom(viewFn);
+      mount.innerHTML = "";
+      mount.append(bar);
+      mount.append(rendered);
+    } catch (err) {
+      mount.innerHTML = "";
+      mount.append(el("pre", `live view error: ${err}`));
+    }
+  };
+  await poll();
+  setInterval(poll, 500);
 };
 const boot = async () => {
   const mount = document.getElementById("app") ?? document.body;
-  if (window.location.pathname.replace(/\/+$/, "") === "/live") {
+  const path2 = window.location.pathname.replace(/\/+$/, "");
+  if (path2 === "/live/view") {
+    return bootLiveView(mount);
+  }
+  if (path2 === "/live") {
     return bootLive(mount);
   }
   const ref2 = parseRefFromPath(window.location.pathname);
@@ -7131,4 +7097,4 @@ boot().catch((err) => {
   const mount = document.getElementById("app") ?? document.body;
   mount.textContent = `App boot failed: ${String(err)}`;
 });
-//# sourceMappingURL=index-D47PXJFp.js.map
+//# sourceMappingURL=index-Czwbl1bb.js.map
