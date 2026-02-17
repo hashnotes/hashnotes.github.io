@@ -45,15 +45,23 @@ const fetchHistory = async (): Promise<HistoryEntry[]> => {
 const latestView = (history: HistoryEntry[]): HistoryEntry | undefined =>
   [...history].reverse().find(e => e.exportName === "view" || e.exportName === "default");
 
+const showBlockedHint = (mount: HTMLElement) => {
+  const hint = el("p", "Can't reach dev server (localhost:4321). Is it running? (npm run dev --workspace lib) If it is, an ad blocker may be blocking the request.");
+  hint.style.cssText = "color:orange;font-size:0.85em;margin-top:1em;";
+  mount.append(hint);
+};
+
 const bootLive = async (mount: HTMLElement) => {
   mount.innerHTML = "";
   mount.textContent = "Connecting to dev server...";
 
   let lastJson = "";
+  let fails = 0;
 
   const poll = async () => {
     try {
       const res = await fetch(`${DEV_URL}/history`);
+      fails = 0;
       const json = await res.text();
       if (json === lastJson) return;
       lastJson = json;
@@ -93,7 +101,10 @@ const bootLive = async (mount: HTMLElement) => {
         mount.append(row);
       }
     } catch {
-      // dev server not running — keep polling
+      if (++fails === 3 && !mount.querySelector("[data-blocked-hint]")) {
+        showBlockedHint(mount);
+        mount.lastElementChild?.setAttribute("data-blocked-hint", "1");
+      }
     }
   };
 
@@ -136,8 +147,11 @@ const bootLiveView = async (mount: HTMLElement) => {
       mount.append(bar);
       mount.append(rendered);
     } catch (err) {
-      mount.innerHTML = "";
-      mount.append(el("pre", `live view error: ${err}`));
+      if (lastJsHash === "" && !mount.querySelector("[data-blocked-hint]")) {
+        mount.innerHTML = "";
+        mount.textContent = "Connecting to dev server...";
+        showBlockedHint(mount);
+      }
     }
   };
 
