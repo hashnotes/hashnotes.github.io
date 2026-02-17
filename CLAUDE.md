@@ -28,7 +28,6 @@ This project is a clean restart. Prefer direct, obvious code first.
 - `core/`: parser, execution runtime, hashing, note model, backend.
 - `lib/`: UI-independent utilities (VDom, DAG renderer).
 - `app/`: routing and page wiring only.
-- Keep business logic out of view files.
 
 4. Canonical internal form
 - At runtime, normalize data into one canonical form before execution/hashing.
@@ -41,7 +40,6 @@ This project is a clean restart. Prefer direct, obvious code first.
 - Keep execution and persistence paths explicit and testable.
 
 6. Testing discipline
-- Preserve parser and VDom/DAG tests as core safety rails.
 - Add tests around data normalization and note insert semantics.
 - Favor small, behavior-focused tests.
 

@@ -1,9 +1,5 @@
-// ts-note: ts-notes/#04cebc474837532104b59f8f8b19ec3a.ts
-// js-note: js-notes/#b46032f80e043f763bbe5efafe609e47.js
-// View module: counter UI.
-// import counterFn → getNoteSync("#hash") for local use
-// remote(counterFn, arg) → remote("#hash", arg) at compile time
-// ./tsnotes.ts
+// ts-note: ts-notes/#b88df8f055da9ffa9211b03a36ffec19.ts
+// js-note: js-notes/#6e856fbf4b49cc683cb444320c2902ff.js
 
 
 import { counterFn } from "./counterFn";
@@ -12,17 +8,17 @@ export const view = ({update}: UPPER) => {
   const label = HTML.p("count: loading...");
   const localLabel = HTML.p("count: loading...");
 
-  let v = 0;
+  let v = -1;  
   const increment = (delta: number) =>
-    remote(counterFn, { delta, v:v+1 }).then(({count, v:newv}) => {
-      if (newv < v) return
-      v = newv;
-      label.textContent = "count: " + count;
+    remote(counterFn, delta).then(([count, version]) => {
+      if (version<v) return
+      v = version
+      label.textContent = "count: " + count
       update(label)
     });
 
   const localIncrement = (delta:number) => {
-    localLabel.textContent = "countss: " + counterFn({delta, v:0}).count;
+    localLabel.textContent = "count: " + counterFn(delta)[0]
     update(localLabel)
   }
 
@@ -30,9 +26,11 @@ export const view = ({update}: UPPER) => {
   localIncrement(0);
 
   return HTML.div(
-    HTML.h2("counter example"),
+    HTML.h2("counter example poop"),
     label,
-    HTML.button("+1", { onclick: () => increment(1) }),
+    HTML.button("+1", { onclick: () => {
+      increment(1);
+    } }),
     HTML.button("-1", { onclick: () => increment(-1) }),
     HTML.h2("local counter"),
     localLabel,

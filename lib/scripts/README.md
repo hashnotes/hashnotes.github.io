@@ -98,8 +98,7 @@ The ts-notes copies have all imports rewritten to hash names (frozen snapshots).
 2. **Strip types** -- removes TypeScript annotations via `node:module`
 3. **Parse** -- builds an acorn AST from the JS module
 4. **Resolve imports** -- friendly names and hash names both resolve to the dep's JS hash
-5. **Rewrite `remote()`** -- `remote(counterFn, arg)` becomes `remote("#jsHash", arg)`
-6. **Inline the body** -- extracts the arrow function body, binds the parameter from `arg`
+5. **Inline the body** -- extracts the arrow function body, binds the parameter from `arg`
 7. **Emit `__deps`** -- prefixes `const __deps = [...]` for runtime prefetching
 8. **Upload** -- `addNote(body)` stores the JS string as a content-addressed note
 9. **Write outputs** -- ts-notes/ (hashed TS copy) and js-notes/ (compiled JS)
@@ -114,7 +113,7 @@ Notes run in a sandboxed `new Function()` with these injected globals:
 | `arg` | `any` | The argument passed to the note (upper object for views) |
 | `store` | `{get, set}` | Per-note persistent key/value storage |
 | `remote(fn, arg)` | `-> Promise` | Call a note on the server (SpacetimeDB) |
-| `getNoteSync(ref)` | `-> (arg) -> result` | Get a callable wrapper for a prefetched dep |
+| `getFuncSync(ref)` | `-> (arg) -> result` | Get a callable wrapper for a prefetched dep |
 | `HTML` | `{div, p, button, ...}` | VDom element constructors |
 | `addNote`, `getNote`, `asRef`, `deref`, `hashData`, `fromjson` | | Note storage primitives |
 

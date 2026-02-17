@@ -36,7 +36,7 @@ declare const remote: <X,Y extends Jsonable> (
 ) => Promise<Y>;
 
 declare const use: (ref: Ref) => Promise<unknown>;
-declare const getNoteSync: (ref: Ref) => (arg: any) => unknown;
+declare const getFuncSync: (ref: Ref) => (arg: any) => unknown;
 
 declare const addNote: (data: Jsonable) => Promise<Ref>;
 declare const getNote: (hash: Ref) => Promise<Jsonable>;

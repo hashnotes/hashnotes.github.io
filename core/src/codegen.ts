@@ -1,20 +1,16 @@
 /**
  * codegen.ts — Security-critical code generation and runtime execution.
  *
- * This module takes a validated AST (from parser.ts) and produces JavaScript
- * source strings that are evaluated via `new Function()`. Every identifier
- * emitted into the generated code is validated by `assertSafeIdent` as a
- * defense-in-depth measure (the parser already produces safe names, but the
- * codegen must not trust its input).
+ * Takes acorn AST (from parser.ts) and produces JavaScript source strings
+ * evaluated via `new Function()`. The render functions act as a whitelist:
+ * unsupported node types are rejected at the `default` branch of each switch.
+ * Every identifier is validated by `assertSafeIdent` as defense-in-depth.
  *
  * Audit surface: renderExpr, renderStmt, renderPattern, and the runner
  * functions that interpolate fuel references.
  */
 
-import type {
-  Program, Stmt, Expr, Literal, Property, Pattern, PatternProperty,
-  Identifier, SpreadElement, BlockStatement, VarDecl,
-} from "./parser.ts";
+import type { AstNode } from "./parser.ts";
 import { parse, validateScopes, validateNoPrototype } from "./parser.ts";
 
 // ---------------------------------------------------------------------------
@@ -38,16 +34,19 @@ export const assertSafeIdent = (name: string): void => {
 };
 
 // ---------------------------------------------------------------------------
-// Code generation (AST → JS source string)
+// Code generation (acorn AST → JS source string)
 // ---------------------------------------------------------------------------
 
-const renderLiteral = (v: Literal["value"]) => {
+const renderLiteral = (node: AstNode) => {
+  if (node.regex) throw new Error("regexp literals not supported");
+  if (node.bigint != null) throw new Error("bigint literals not supported");
+  const v = node.value;
   if (v === null) return "null";
   if (typeof v === "string") return JSON.stringify(v);
   return String(v);
 };
 
-const renderExpr = (e: Expr): string => {
+const renderExpr = (e: AstNode): string => {
   switch (e.type) {
     case "Identifier":
       assertSafeIdent(e.name);
@@ -55,17 +54,17 @@ const renderExpr = (e: Expr): string => {
     case "SpreadElement":
       return `...${renderExpr(e.argument)}`;
     case "Literal":
-      return renderLiteral(e.value);
+      return renderLiteral(e);
     case "ArrayExpression":
-      return `[${e.elements.map(renderExpr).join(", ")}]`;
+      return `[${(e.elements as AstNode[]).map((el) => el ? renderExpr(el) : "").join(", ")}]`;
     case "ObjectExpression":
-      return `{${e.properties.map((p) => p.type === "SpreadElement" ? `...${renderExpr(p.argument)}` : renderProp(p)).join(", ")}}`;
+      return `{${(e.properties as AstNode[]).map((p) => p.type === "SpreadElement" ? `...${renderExpr(p.argument)}` : renderProp(p)).join(", ")}}`;
     case "AwaitExpression":
       return `(await ${renderExpr(e.argument)})`;
     case "CallExpression": {
       const calleeStr = renderExpr(e.callee);
       const needsParens = e.callee.type === "ArrowFunctionExpression";
-      return `${needsParens ? "(" : ""}${calleeStr}${needsParens ? ")" : ""}(${e.arguments.map(renderExpr).join(", ")})`;
+      return `${needsParens ? "(" : ""}${calleeStr}${needsParens ? ")" : ""}(${(e.arguments as AstNode[]).map(renderExpr).join(", ")})`;
     }
     case "MemberExpression":
       return e.computed
@@ -88,12 +87,17 @@ const renderExpr = (e: Expr): string => {
       return `(${renderExpr(e.test)} ? ${renderExpr(e.consequent)} : ${renderExpr(e.alternate)})`;
     case "ArrowFunctionExpression":
       return renderArrow(e);
+    default:
+      throw new Error(`unsupported expression: ${e.type}`);
   }
 };
 
-const renderProp = (p: Property) => {
+const renderProp = (p: AstNode) => {
+  if (p.computed) throw new Error("computed properties not supported");
+  if (p.method) throw new Error("method properties not supported");
+  if (p.kind !== "init") throw new Error(`unsupported property kind: ${p.kind}`);
   const key =
-    p.key.type === "Identifier" ? p.key.name : renderLiteral(p.key.value);
+    p.key.type === "Identifier" ? p.key.name : renderLiteral(p.key);
   if (p.shorthand && p.value.type === "Identifier" && p.value.name === key) {
     assertSafeIdent(key);
     return key;
@@ -101,8 +105,8 @@ const renderProp = (p: Property) => {
   return `${key}: ${renderExpr(p.value)}`;
 };
 
-const renderArrow = (e: Extract<Expr, { type: "ArrowFunctionExpression" }>) => {
-  const params = `(${e.params.map(renderPattern).join(", ")})`;
+const renderArrow = (e: AstNode) => {
+  const params = `(${(e.params as AstNode[]).map(renderPattern).join(", ")})`;
   const prefix = e.async ? "async " : "";
   if (e.body.type === "BlockStatement") {
     return `${prefix}${params} => ${renderStmt(e.body, true)}`;
@@ -110,29 +114,30 @@ const renderArrow = (e: Extract<Expr, { type: "ArrowFunctionExpression" }>) => {
   return `${prefix}${params} => { __burn(); return ${renderExpr(e.body)}; }`;
 };
 
-const renderStmt = (s: Stmt, inFn = false): string => {
+const renderStmt = (s: AstNode, inFn = false): string => {
   const burn = inFn ? "__burn();" : "";
-  const renderLoopBody = (body: Stmt) => {
+  const renderLoopBody = (body: AstNode) => {
     if (body.type === "BlockStatement") {
-      const inner = body.body.map((b) => renderStmt(b, inFn)).join("");
+      const inner = (body.body as AstNode[]).map((b) => renderStmt(b, inFn)).join("");
       return `{__burn();${inner}}`;
     }
     return `{__burn();${renderStmt(body, inFn)}}`;
   };
   switch (s.type) {
     case "BlockStatement":
-      return `{${s.body.map((b) => renderStmt(b, inFn)).join("")}}`;
+      return `{${(s.body as AstNode[]).map((b) => renderStmt(b, inFn)).join("")}}`;
     case "ExpressionStatement":
       return `${burn}${renderExpr(s.expression)};`;
     case "IfStatement": {
-      const wrap = (stmt: Stmt) =>
+      const wrap = (stmt: AstNode) =>
         stmt.type === "BlockStatement" ? renderStmt(stmt, inFn) : `{${renderStmt(stmt, inFn)}}`;
       return `${burn}if (${renderExpr(s.test)}) ${wrap(s.consequent)}${s.alternate ? ` else ${wrap(s.alternate)}` : ""}`;
     }
     case "ReturnStatement":
       return `${burn}return${s.argument ? ` ${renderExpr(s.argument)}` : ""};`;
     case "VariableDeclaration":
-      return `${burn}${s.kind} ${s.declarations.map(renderDecl).join(", ")};`;
+      if (s.kind === "var") throw new Error("var declarations not allowed");
+      return `${burn}${s.kind} ${(s.declarations as AstNode[]).map(renderDecl).join(", ")};`;
     case "BreakStatement":
       return `${burn}break;`;
     case "ContinueStatement":
@@ -143,44 +148,58 @@ const renderStmt = (s: Stmt, inFn = false): string => {
       const init =
         s.init == null
           ? ""
-          : Array.isArray(s.init)
-          ? `${s.initKind} ${s.init.map(renderDecl).join(", ")}`
+          : s.init.type === "VariableDeclaration"
+          ? `${s.init.kind} ${(s.init.declarations as AstNode[]).map(renderDecl).join(", ")}`
           : renderExpr(s.init);
       const test = s.test ? renderExpr(s.test) : "";
       const update = s.update ? renderExpr(s.update) : "";
       return `${burn}for (${init}; ${test}; ${update}) ${renderLoopBody(s.body)}`;
     }
     case "ForInStatement": {
-      const left = Array.isArray(s.left)
-        ? `${s.leftKind} ${s.left.map(renderDecl).join(", ")}`
+      const left = s.left.type === "VariableDeclaration"
+        ? `${s.left.kind} ${(s.left.declarations as AstNode[]).map(renderDecl).join(", ")}`
         : renderExpr(s.left);
       return `${burn}for (${left} in ${renderExpr(s.right)}) ${renderLoopBody(s.body)}`;
     }
     case "ForOfStatement": {
-      const left = Array.isArray(s.left)
-        ? `${s.leftKind} ${s.left.map(renderDecl).join(", ")}`
+      if (s.await) throw new Error("for-await-of not supported");
+      const left = s.left.type === "VariableDeclaration"
+        ? `${s.left.kind} ${(s.left.declarations as AstNode[]).map(renderDecl).join(", ")}`
         : renderExpr(s.left);
       return `${burn}for (${left} of ${renderExpr(s.right)}) ${renderLoopBody(s.body)}`;
     }
+    case "EmptyStatement":
+      return "";
+    default:
+      throw new Error(`unsupported statement: ${s.type}`);
   }
 };
 
-const renderDecl = (d: VarDecl) =>
+const renderDecl = (d: AstNode) =>
   `${renderPattern(d.id)}${d.init ? ` = ${renderExpr(d.init)}` : ""}`;
 
-const renderPattern = (p: Pattern): string => {
-  if (p.type === "Identifier") {
-    assertSafeIdent(p.name);
-    return p.name;
+const renderPattern = (p: AstNode): string => {
+  switch (p.type) {
+    case "Identifier":
+      assertSafeIdent(p.name);
+      return p.name;
+    case "RestElement":
+      return `...${renderPattern(p.argument)}`;
+    case "ArrayPattern":
+      return `[${(p.elements as (AstNode | null)[]).map((el) => el ? renderPattern(el) : "").join(", ")}]`;
+    case "ObjectPattern":
+      return `{${(p.properties as AstNode[]).map((prop) =>
+        prop.type === "RestElement" ? `...${renderPattern(prop.argument)}` : renderPatternProperty(prop)
+      ).join(", ")}}`;
+    default:
+      throw new Error(`unsupported pattern: ${p.type}`);
   }
-  if (p.type === "RestElement") return `...${renderPattern(p.argument)}`;
-  if (p.type === "ArrayPattern") return `[${p.elements.map(renderPattern).join(", ")}]`;
-  return `{${p.properties.map((prop) => prop.type === "RestElement" ? `...${renderPattern(prop.argument)}` : renderPatternProperty(prop)).join(", ")}}`;
 };
 
-const renderPatternProperty = (p: PatternProperty): string => {
+const renderPatternProperty = (p: AstNode): string => {
+  if (p.computed) throw new Error("computed pattern properties not supported");
   const key =
-    p.key.type === "Identifier" ? p.key.name : renderLiteral(p.key.value);
+    p.key.type === "Identifier" ? p.key.name : renderLiteral(p.key);
   if (
     p.shorthand &&
     p.key.type === "Identifier" &&
@@ -193,7 +212,11 @@ const renderPatternProperty = (p: PatternProperty): string => {
   return `${key}: ${renderPattern(p.value)}`;
 };
 
-const validateNoReservedRuntimeNames = (program: Program, reservedNames: string[]): string[] => {
+// ---------------------------------------------------------------------------
+// Reserved name validation
+// ---------------------------------------------------------------------------
+
+const validateNoReservedRuntimeNames = (program: AstNode, reservedNames: string[]): string[] => {
   const reserved = new Set(reservedNames);
   const errors: string[] = [];
 
@@ -201,7 +224,7 @@ const validateNoReservedRuntimeNames = (program: Program, reservedNames: string[
     if (reserved.has(name)) errors.push(`reserved identifier: ${name}`);
   };
 
-  const visitPattern = (p: Pattern): void => {
+  const visitPattern = (p: AstNode): void => {
     switch (p.type) {
       case "Identifier":
         hit(p.name);
@@ -210,21 +233,19 @@ const validateNoReservedRuntimeNames = (program: Program, reservedNames: string[
         visitPattern(p.argument);
         return;
       case "ArrayPattern":
-        p.elements.forEach(visitPattern);
+        (p.elements as (AstNode | null)[]).forEach((el) => el && visitPattern(el));
         return;
       case "ObjectPattern":
-        p.properties.forEach((prop) => {
-          if (prop.type === "RestElement") {
-            visitPattern(prop.argument);
-            return;
-          }
-          visitPattern(prop.value);
+        (p.properties as AstNode[]).forEach((prop) => {
+          if (prop.type === "RestElement") visitPattern(prop.argument);
+          else visitPattern(prop.value);
         });
         return;
     }
   };
 
-  const visitExpr = (e: Expr): void => {
+  const visitExpr = (e: AstNode): void => {
+    if (!e) return;
     switch (e.type) {
       case "Identifier":
         hit(e.name);
@@ -235,10 +256,10 @@ const validateNoReservedRuntimeNames = (program: Program, reservedNames: string[
         visitExpr(e.argument);
         return;
       case "ArrayExpression":
-        e.elements.forEach((el) => visitExpr(el));
+        (e.elements as AstNode[]).forEach((el) => el && visitExpr(el));
         return;
       case "ObjectExpression":
-        e.properties.forEach((p) => {
+        (e.properties as AstNode[]).forEach((p) => {
           if (p.type === "SpreadElement") {
             visitExpr(p.argument);
             return;
@@ -252,7 +273,7 @@ const validateNoReservedRuntimeNames = (program: Program, reservedNames: string[
         return;
       case "CallExpression":
         visitExpr(e.callee);
-        e.arguments.forEach((a) => visitExpr(a));
+        (e.arguments as AstNode[]).forEach((a) => visitExpr(a));
         return;
       case "MemberExpression":
         visitExpr(e.object);
@@ -279,22 +300,22 @@ const validateNoReservedRuntimeNames = (program: Program, reservedNames: string[
         visitExpr(e.alternate);
         return;
       case "ArrowFunctionExpression":
-        e.params.forEach(visitPattern);
+        (e.params as AstNode[]).forEach(visitPattern);
         if (e.body.type === "BlockStatement") visitStmt(e.body);
         else visitExpr(e.body);
         return;
     }
   };
 
-  const visitVarDecl = (d: VarDecl) => {
+  const visitVarDecl = (d: AstNode) => {
     visitPattern(d.id);
     if (d.init) visitExpr(d.init);
   };
 
-  const visitStmt = (s: Stmt): void => {
+  const visitStmt = (s: AstNode): void => {
     switch (s.type) {
       case "BlockStatement":
-        s.body.forEach(visitStmt);
+        (s.body as AstNode[]).forEach(visitStmt);
         return;
       case "ExpressionStatement":
         visitExpr(s.expression);
@@ -308,14 +329,14 @@ const validateNoReservedRuntimeNames = (program: Program, reservedNames: string[
         if (s.argument) visitExpr(s.argument);
         return;
       case "VariableDeclaration":
-        s.declarations.forEach(visitVarDecl);
+        (s.declarations as AstNode[]).forEach(visitVarDecl);
         return;
       case "WhileStatement":
         visitExpr(s.test);
         visitStmt(s.body);
         return;
       case "ForStatement":
-        if (Array.isArray(s.init)) s.init.forEach(visitVarDecl);
+        if (s.init?.type === "VariableDeclaration") (s.init.declarations as AstNode[]).forEach(visitVarDecl);
         else if (s.init) visitExpr(s.init);
         if (s.test) visitExpr(s.test);
         if (s.update) visitExpr(s.update);
@@ -323,18 +344,19 @@ const validateNoReservedRuntimeNames = (program: Program, reservedNames: string[
         return;
       case "ForInStatement":
       case "ForOfStatement":
-        if (Array.isArray(s.left)) s.left.forEach(visitVarDecl);
+        if (s.left.type === "VariableDeclaration") (s.left.declarations as AstNode[]).forEach(visitVarDecl);
         else visitExpr(s.left);
         visitExpr(s.right);
         visitStmt(s.body);
         return;
       case "BreakStatement":
       case "ContinueStatement":
+      case "EmptyStatement":
         return;
     }
   };
 
-  program.body.forEach(visitStmt);
+  (program.body as AstNode[]).forEach(visitStmt);
   return errors;
 };
 
@@ -342,40 +364,28 @@ const validateNoReservedRuntimeNames = (program: Program, reservedNames: string[
 // Runner codegen (wraps program body with fuel metering)
 // ---------------------------------------------------------------------------
 
-export const renderWithFuel = (program: Program, fuel = 10000) => {
+export const renderWithFuel = (program: AstNode, fuel = 10000) => {
   const prelude = `let __fuel = ${fuel}; const __burn = () => { if (--__fuel < 0) throw new Error("fuel exhausted"); };`;
-  const body = program.body.map((s) => renderStmt(s, true)).join("");
+  const body = (program.body as AstNode[]).map((s) => renderStmt(s, true)).join("");
   return `${prelude}${body}`;
 };
 
-export const renderRunnerWithFuel = (program: Program, fuel = 10000) => {
-  const prelude = `let __fuel = ${fuel}; const __burn = () => { if (--__fuel < 0) throw new Error("fuel exhausted"); };`;
-  const body = program.body.map((s) => renderStmt(s, true)).join("");
-  return `${prelude}const __run = () => {${body}}; try { const ok = __run(); return { ok, fuel: __fuel }; } catch (err) { return { err: String(err), fuel: __fuel }; }`;
-};
-
-export const renderRunnerWithFuelShared = (program: Program, fuelRefName = "__fuel") => {
+const renderRunnerWithFuelShared = (program: AstNode, fuelRefName = "__fuel") => {
   assertSafeIdent(fuelRefName);
   const reservedErrs = validateNoReservedRuntimeNames(program, [fuelRefName, "__burn"]);
   if (reservedErrs.length) throw new Error(reservedErrs.join(", "));
   const prelude = `const __burn = () => { if (--${fuelRefName}.value < 0) throw new Error("fuel exhausted"); };`;
-  const body = program.body.map((s) => renderStmt(s, true)).join("");
+  const body = (program.body as AstNode[]).map((s) => renderStmt(s, true)).join("");
   return `${prelude}const __run = () => {${body}}; try { const ok = __run(); return { ok, fuel: ${fuelRefName}.value }; } catch (err) { return { err: String(err), fuel: ${fuelRefName}.value }; }`;
 };
 
-export const renderRunnerWithFuelSharedAsync = (program: Program, fuelRefName = "__fuel") => {
+const renderRunnerWithFuelSharedAsync = (program: AstNode, fuelRefName = "__fuel") => {
   assertSafeIdent(fuelRefName);
   const reservedErrs = validateNoReservedRuntimeNames(program, [fuelRefName, "__burn"]);
   if (reservedErrs.length) throw new Error(reservedErrs.join(", "));
   const prelude = `const __burn = () => { if (--${fuelRefName}.value < 0) throw new Error("fuel exhausted"); };`;
-  const body = program.body.map((s) => renderStmt(s, true)).join("");
+  const body = (program.body as AstNode[]).map((s) => renderStmt(s, true)).join("");
   return `${prelude}const __run = async () => {${body}}; return __run().then(ok => ({ ok, fuel: ${fuelRefName}.value })).catch(err => ({ err: String(err), fuel: ${fuelRefName}.value }));`;
-};
-
-export const renderRunnerWithFuelAsync = (program: Program, fuel = 10000) => {
-  const prelude = `let __fuel = ${fuel}; const __burn = () => { if (--__fuel < 0) throw new Error("fuel exhausted"); };`;
-  const body = program.body.map((s) => renderStmt(s, true)).join("");
-  return `${prelude}const __run = async () => {${body}}; return __run().then(ok => ({ ok, fuel: __fuel })).catch(err => ({ err: String(err), fuel: __fuel }));`;
 };
 
 // ---------------------------------------------------------------------------

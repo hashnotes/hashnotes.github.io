@@ -54,6 +54,9 @@ const createLocalExecutor = (options: ClientFuelOptions): LocalExecutor => {
   // Cache: hash → source string (pre-fetched, not executed)
   const sourceCache = new Map<string, string>();
 
+  // Map from wrapper function → hash (for remote() to resolve)
+  const fnToHash = new Map<Function, string>();
+
   /** Recursively fetch dep sources into sourceCache (no execution). */
   const prefetch = async (ref: string): Promise<void> => {
     if (sourceCache.has(ref)) return;
@@ -73,19 +76,23 @@ const createLocalExecutor = (options: ClientFuelOptions): LocalExecutor => {
 
     const store = makeStore(fnRef, memStore, ls);
 
-    const remote = async (remoteFn: Ref | Jsonable, remoteArg?: Ref | Jsonable): Promise<Jsonable> =>
-      callNote(remoteFn, remoteArg === undefined ? null : remoteArg);
+    const remote = async (fn: unknown, remoteArg?: Ref | Jsonable): Promise<Jsonable> => {
+      const hash = fnToHash.get(fn as Function) ?? fn;
+      return callNote(hash as Ref | Jsonable, remoteArg === undefined ? null : remoteArg);
+    };
 
     /** Return a callable wrapper that runs the dep's body with arg = callArg, own store. */
-    const getNoteSync = (ref: string): (callArg: unknown) => unknown => {
+    const getFuncSync = (ref: string): (callArg: unknown) => unknown => {
       const src = sourceCache.get(ref);
-      if (src === undefined) throw new Error(`getNoteSync: note ${ref} not in cache`);
-      return (callArg: unknown) => {
+      if (src === undefined) throw new Error(`getFuncSync: note ${ref} not in cache`);
+      const fn = (callArg: unknown) => {
         const depStore = makeStore(ref, memStore, ls);
         const result = runWithFuelShared(src, fuelRef, { ...env, arg: callArg, store: depStore });
         if ("err" in result) throw new Error(result.err);
         return result.ok;
       };
+      fnToHash.set(fn, ref);
+      return fn;
     };
 
     const env: Record<string, unknown> = {
@@ -96,7 +103,7 @@ const createLocalExecutor = (options: ClientFuelOptions): LocalExecutor => {
       callNote: callLocal,
       remote,
       store,
-      getNoteSync,
+      getFuncSync,
       addNote,
       getNote,
       asRef,
@@ -104,6 +111,7 @@ const createLocalExecutor = (options: ClientFuelOptions): LocalExecutor => {
       hashData,
       fromjson,
       HTML,
+      console,
     };
 
     // Pre-fetch all dep sources before executing
@@ -146,6 +154,9 @@ export const callViewClient = async (
     try { return typeof localStorage !== "undefined" ? localStorage : undefined; } catch { return undefined; }
   })();
 
+  // Map from wrapper function → hash (for remote() to resolve)
+  const fnToHash = new Map<Function, string>();
+
   const fnRef = await asRef(fn);
   const fnNote = await deRef(fnRef);
   if (typeof fnNote !== "string") throw new Error("view note must resolve to a string");
@@ -162,24 +173,34 @@ export const callViewClient = async (
 
   const store = makeStore(fnRef, memStore, ls);
 
-  const remote = async (remoteFn: Ref | Jsonable, remoteArg?: Ref | Jsonable): Promise<Jsonable> =>
-    callNote(remoteFn, remoteArg === undefined ? null : remoteArg);
+  const remote = async (fn: unknown, remoteArg?: Ref | Jsonable): Promise<Jsonable> => {
+    const hash = fnToHash.get(fn as Function);
+    const resolved = hash ?? fn;
+    try {
+      const result = await callNote(resolved as Ref | Jsonable, remoteArg === undefined ? null : remoteArg);
+      return result;
+    } catch (e) {
+      throw e;
+    }
+  };
 
   /** Return a callable wrapper that runs the dep's body with arg = callArg, own store. */
-  const getNoteSync = (ref: string): (callArg: unknown) => unknown => {
+  const getFuncSync = (ref: string): (callArg: unknown) => unknown => {
     const src = sourceCache.get(ref);
-    if (src === undefined) throw new Error(`getNoteSync: note ${ref} not in cache`);
-    return (callArg: unknown) => {
+    if (src === undefined) throw new Error(`getFuncSync: note ${ref} not in cache`);
+    const fn = (callArg: unknown) => {
       const depStore = makeStore(ref, memStore, ls);
       const result = runWithFuelShared(src, fuelRef, { ...baseEnv, arg: callArg, store: depStore });
       if ("err" in result) throw new Error(result.err);
       return result.ok;
     };
+    fnToHash.set(fn, ref);
+    return fn;
   };
 
   const baseEnv: Record<string, unknown> = {
     ...(options.env ?? {}),
-    remote, getNoteSync, store, addNote, getNote, asRef, deref: deRef, hashData, fromjson, HTML,
+    remote, getFuncSync, store, addNote, getNote, asRef, deref: deRef, hashData, fromjson, HTML, console,
   };
 
   // Inlined body — arg is the upper object.

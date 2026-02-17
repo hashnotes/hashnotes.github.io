@@ -3,29 +3,29 @@ import { assert, assertEq } from "./assert.ts";
 import { compileModule, stripTypes } from "../src/compile.ts";
 
 describe("compileModule", () => {
-  it("rewrites named import to getNoteSync()", () => {
+  it("rewrites named import to getFuncSync()", () => {
     const src = `import { foo } from "#aaa";\nexport const x = () => foo();`;
     const out = compileModule(src);
-    assert(out.includes(`const foo = getNoteSync("#aaa")`), out);
+    assert(out.includes(`const foo = getFuncSync("#aaa")`), out);
     assert(out.includes("foo()"), out);
   });
 
-  it("rewrites default import to getNoteSync()", () => {
+  it("rewrites default import to getFuncSync()", () => {
     const src = `import foo from "#aaa";\nexport const x = () => foo();`;
     const out = compileModule(src);
-    assert(out.includes(`const foo = getNoteSync("#aaa")`), out);
+    assert(out.includes(`const foo = getFuncSync("#aaa")`), out);
   });
 
-  it("rewrites namespace import to getNoteSync()", () => {
+  it("rewrites namespace import to getFuncSync()", () => {
     const src = `import * as utils from "#aaa";\nexport const x = () => utils.run();`;
     const out = compileModule(src);
-    assert(out.includes(`const utils = getNoteSync("#aaa")`), out);
+    assert(out.includes(`const utils = getFuncSync("#aaa")`), out);
   });
 
-  it("rewrites side-effect import to getNoteSync()", () => {
+  it("rewrites side-effect import to getFuncSync()", () => {
     const src = `import "#setup";\nexport const x = () => 1;`;
     const out = compileModule(src);
-    assert(out.includes(`getNoteSync("#setup")`), out);
+    assert(out.includes(`getFuncSync("#setup")`), out);
   });
 
   it("inlines single exported function body", () => {
@@ -41,7 +41,7 @@ describe("compileModule", () => {
     const src = `export default (x) => x + 1;`;
     const out = compileModule(src);
     assert(out.includes("const x = arg;"), "should bind param: " + out);
-    assert(out.includes("return (x + 1);"), "should inline body: " + out);
+    assert(out.includes("return x + 1;"), "should inline body: " + out);
   });
 
   it("throws on re-export (not an arrow)", () => {
@@ -63,7 +63,7 @@ describe("compileModule", () => {
     const out = compileModule(src);
     assert(!out.includes(": string"), "types should be stripped: " + out);
     assert(out.includes("const name = arg;"), "should bind param: " + out);
-    assert(out.includes('return (name + " world");'), "should inline body: " + out);
+    assert(out.includes('return name + " world";'), "should inline body: " + out);
   });
 
   it("uses resolve function for import specifiers", () => {
@@ -71,7 +71,7 @@ describe("compileModule", () => {
     const out = compileModule(src, (spec) =>
       spec === "#ts_hash" ? "#js_compiled" : spec
     );
-    assert(out.includes(`getNoteSync("#js_compiled")`), out);
+    assert(out.includes(`getFuncSync("#js_compiled")`), out);
   });
 
   it("handles mixed import and export with inlined body", () => {
@@ -80,7 +80,7 @@ import { helper } from "#dep";
 export const greet = (name) => helper(name);
 `;
     const out = compileModule(src);
-    assert(out.includes(`getNoteSync("#dep")`), out);
+    assert(out.includes(`getFuncSync("#dep")`), out);
     assert(out.includes("const name = arg;"), "should bind param: " + out);
     assert(out.includes("return helper(name);"), "should inline body: " + out);
   });
@@ -125,8 +125,8 @@ describe("compileModule __deps", () => {
   });
 });
 
-describe("compileModule remote() rewrite", () => {
-  it("rewrites remote(importedName, arg) to remote('#hash', arg)", () => {
+describe("compileModule remote() passthrough", () => {
+  it("does not rewrite remote() calls — passes through verbatim", () => {
     const src = `
 import { counterFn } from "./#123";
 export const view = (upper) => {
@@ -136,12 +136,13 @@ export const view = (upper) => {
     const out = compileModule(src, (spec) =>
       spec === "./#123" ? "#abc123" : spec
     );
-    assert(out.includes(`remote("#abc123", ({delta: 1}))`), "remote should get hash: " + out);
-    // counterFn is only used in remote() — should NOT emit getNoteSync
-    assert(!out.includes(`getNoteSync("#abc123")`), "should not bind locally when only used in remote(): " + out);
+    // counterFn is bound via getFuncSync (runtime resolves hash via fnToHash map)
+    assert(out.includes(`const counterFn = getFuncSync("#abc123")`), "should bind import: " + out);
+    // remote() call is left untouched — runtime resolves fn→hash
+    assert(out.includes("remote(counterFn, { delta: 1 })"), "remote should pass through: " + out);
   });
 
-  it("does not rewrite remote() with non-imported args", () => {
+  it("leaves remote() with non-imported args untouched", () => {
     const src = `
 export const view = (upper) => {
   const hash = "#abc";
@@ -149,10 +150,10 @@ export const view = (upper) => {
 };
 `;
     const out = compileModule(src);
-    assert(out.includes("remote(hash, ({})"), "should keep hash as-is: " + out);
+    assert(out.includes("remote(hash, {})"), "should keep as-is: " + out);
   });
 
-  it("rewrites remote() but keeps local usage as function", () => {
+  it("binds import for both local and remote usage", () => {
     const src = `
 import { helper } from "./#dep";
 export const view = (upper) => {
@@ -164,11 +165,11 @@ export const view = (upper) => {
     const out = compileModule(src, (spec) =>
       spec === "./#dep" ? "#dep_hash" : spec
     );
-    // Local use: helper is a callable function from getNoteSync
-    assert(out.includes(`const helper = getNoteSync("#dep_hash")`), "local binding: " + out);
-    // remote use: hash string
-    assert(out.includes(`remote("#dep_hash", ({x: 1}))`), "remote rewrite: " + out);
-    // local call is left alone
+    // import bound as callable function
+    assert(out.includes(`const helper = getFuncSync("#dep_hash")`), "local binding: " + out);
+    // remote() left alone — runtime uses fnToHash to resolve
+    assert(out.includes("remote(helper, { x: 1 })"), "remote passthrough: " + out);
+    // local call untouched
     assert(out.includes("helper(42)"), "local call: " + out);
   });
 });
