@@ -23,6 +23,7 @@ export const validateScopes = (program: AstNode, allowedGlobals: string[] = []) 
 
   const declarePattern = (p: AstNode) => {
     if (p.type === "Identifier") declare(p.name);
+    else if (p.type === "AssignmentPattern") declarePattern(p.left);
     else if (p.type === "RestElement") declarePattern(p.argument);
     else if (p.type === "ArrayPattern") (p.elements as AstNode[]).forEach(declarePattern);
     else if (p.type === "ObjectPattern") (p.properties as AstNode[]).forEach((prop) => {

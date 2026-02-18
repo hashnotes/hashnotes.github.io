@@ -32,7 +32,7 @@ describe("compileModule", () => {
     const src = `export const view = (upper) => HTML.div("hello");`;
     const out = compileModule(src);
     assert(!out.includes("export"), out);
-    assert(out.includes("const upper = arg;"), "should bind param from arg: " + out);
+    assert(out.includes("const [upper] = args;"), "should bind param from arg: " + out);
     assert(out.includes('return HTML.div("hello");'), "should inline body: " + out);
     assert(!out.includes("const view ="), "should not wrap in variable: " + out);
   });
@@ -40,7 +40,7 @@ describe("compileModule", () => {
   it("inlines export default function body", () => {
     const src = `export default (x) => x + 1;`;
     const out = compileModule(src);
-    assert(out.includes("const x = arg;"), "should bind param: " + out);
+    assert(out.includes("const [x] = args;"), "should bind param: " + out);
     assert(out.includes("return x + 1;"), "should inline body: " + out);
   });
 
@@ -62,7 +62,7 @@ describe("compileModule", () => {
     const src = `export const greet = (name: string): string => name + " world";`;
     const out = compileModule(src);
     assert(!out.includes(": string"), "types should be stripped: " + out);
-    assert(out.includes("const name = arg;"), "should bind param: " + out);
+    assert(out.includes("const [name] = args;"), "should bind param: " + out);
     assert(out.includes('return name + " world";'), "should inline body: " + out);
   });
 
@@ -81,7 +81,7 @@ export const greet = (name) => helper(name);
 `;
     const out = compileModule(src);
     assert(out.includes(`getFuncSync("#dep")`), out);
-    assert(out.includes("const name = arg;"), "should bind param: " + out);
+    assert(out.includes("const [name] = args;"), "should bind param: " + out);
     assert(out.includes("return helper(name);"), "should inline body: " + out);
   });
 
@@ -96,6 +96,27 @@ export const greet = (name) => helper(name);
     let threw = false;
     try { compileModule(src); } catch { threw = true; }
     assert(threw, "should throw on export *");
+  });
+
+  it("inlines multi-param exported function", () => {
+    const src = `export const add = (a, b) => a + b;`;
+    const out = compileModule(src);
+    assert(out.includes("const [a, b] = args;"), "should destructure params: " + out);
+    assert(out.includes("return a + b;"), "should inline body: " + out);
+  });
+
+  it("inlines three-param exported function with block body", () => {
+    const src = `export const clamp = (val, min, max) => {\n  if (val < min) return min;\n  if (val > max) return max;\n  return val;\n};`;
+    const out = compileModule(src);
+    assert(out.includes("const [val, min, max] = args;"), "should destructure params: " + out);
+    assert(out.includes("if (val < min) return min;"), "should inline body: " + out);
+  });
+
+  it("zero-param function has no args destructuring", () => {
+    const src = `export const now = () => Date.now();`;
+    const out = compileModule(src);
+    assert(!out.includes("args"), "no args binding: " + out);
+    assert(out.includes("return Date.now();"), "should inline body: " + out);
   });
 });
 

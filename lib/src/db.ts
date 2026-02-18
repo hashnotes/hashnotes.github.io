@@ -142,8 +142,8 @@ export const getNote = async (hash: Ref, options: CacheOptions = {}): Promise<Js
 export const deRef = async (value: Jsonable): Promise<Jsonable> =>  isRef(value) ? getNote(value).then(deRef) : value;
 export const asRef = async (value: Ref | Jsonable): Promise<Ref> => isRef(value) ? value : addNote(value);
 
-export const callNote = async (fn: Ref | Jsonable, arg?: Ref | Jsonable): Promise<Jsonable> => {
+export const callNote = async (fn: Ref | Jsonable, args?: Ref | Jsonable): Promise<Jsonable> => {
   const fnRef = await asRef(fn);
-  const argRef = await asRef(arg === undefined ? null : arg);
-  return await call("call_note", { fn: fnRef, arg: argRef }).then(fromjson).then(deRef)
+  const argsRef = await asRef(args === undefined ? [] : args);
+  return await call("call_note", { fn: fnRef, arg: argsRef }).then(fromjson).then(deRef)
 };

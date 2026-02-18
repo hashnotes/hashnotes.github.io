@@ -89,12 +89,13 @@ spacetimedb.procedure(
     const asRef = (value: Ref | Jsonable): Ref => isRef(value) ? value : addNote(value);
     const deref = (value: Ref | Jsonable): Jsonable => isRef(value) ? getNote(value) : value;
 
-    const callNote = (fnInput: Ref | Jsonable, argInput: Ref | Jsonable): Jsonable => {
+    const callNote = (fnInput: Ref | Jsonable, argsInput: Ref | Jsonable): Jsonable => {
       const fnRef = asRef(fnInput);
-      const argRef = asRef(argInput);
+      const argsRef = asRef(argsInput);
       const fnNote = deref(fnRef);
       if (typeof fnNote !== "string") throw new SenderError("function note must resolve to a string");
-      const argNote = deref(argRef);
+      const argsNote = deref(argsRef);
+      const args = Array.isArray(argsNote) ? argsNote : [argsNote];
       const storekey = (key: Ref | Jsonable): Ref => hash128(hashData(fnRef), asRef(key));
       const store = {
         get: (key: Ref | Jsonable) => {
@@ -115,7 +116,7 @@ spacetimedb.procedure(
       const result = runWithFuelShared(
         fnNote,
         fuelRef,
-        { arg: argNote, argRef, call: callNote, callNote, store, addNote, getNote, asRef, deref, hashData, fromjson }
+        { args, call: callNote, callNote, store, addNote, getNote, asRef, deref, hashData, fromjson }
       );
       if ("ok" in result) return result.ok as Jsonable;
       if ("err" in result) throw new SenderError(`error executing note: ${result.err}`);

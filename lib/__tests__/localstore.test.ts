@@ -77,17 +77,18 @@ it("client runtime: local store persists across separate callNoteClient calls (v
   const { callNoteClient } = await import("../src/runtime.ts");
 
   const fn = `
+    const [arg] = args;
     if (arg.write) store.set(arg.key, arg.value);
     return store.get(arg.key);
   `;
 
   const payload = { key: { k: "persist" }, value: { ok: true, n: 7 }, write: true };
 
-  const r1 = await callNoteClient(fn, payload, { fuel: 100000 });
+  const r1 = await callNoteClient(fn, [payload], { fuel: 100000 });
   assertEq(r1, payload.value);
   // Ensure something was written to localStorage.
   assertEq(ls.size > 0, true);
 
-  const r2 = await callNoteClient(fn, { key: payload.key, write: false }, { fuel: 100000 });
+  const r2 = await callNoteClient(fn, [{ key: payload.key, write: false }], { fuel: 100000 });
   assertEq(r2, payload.value);
 });

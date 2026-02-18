@@ -21,21 +21,19 @@ type Jsonable =
 type VDom = import("../src/views.ts").VDom;
 type UPPER = import("../src/views.ts").UPPER;
 
-declare const arg: any;
-declare const argRef: Ref;
+declare const args: any[];
 
 declare const store: {
   get(key: Ref | Jsonable): Jsonable | undefined;
   set(key: Ref | Jsonable, value: Ref | Jsonable): Jsonable;
 };
 
-declare const remote: <X,Y extends Jsonable> (
-  fn: (x:X) => Y,
-  arg?: X,
-) => Promise<Y>;
+declare const remote: <T extends (...args: any[]) => any>(
+  fn: T,
+) => (...args: Parameters<T>) => Promise<Awaited<ReturnType<T>>>;
 
 declare const use: (ref: Ref) => Promise<unknown>;
-declare const getFuncSync: (ref: Ref) => (arg: any) => unknown;
+declare const getFuncSync: (ref: Ref) => (...args: any[]) => unknown;
 declare const getDataSync: (ref: Ref) => Jsonable;
 
 declare const addNote: (data: Jsonable) => Promise<Ref>;

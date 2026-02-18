@@ -19,7 +19,7 @@ const DEV_URL = "http://localhost:4321";
 const renderRef = async (mount: HTMLElement, ref: Ref) => {
   let note = await getNote(ref);
   try {
-    const view = await callViewClient(ref, {});
+    const view = await callViewClient(ref);
     const el = renderDom(view);
     mount.innerHTML = "";
     mount.append(el);
@@ -140,7 +140,7 @@ const bootLiveView = async (mount: HTMLElement) => {
       bar.append(permLink);
 
       // Render the view
-      const viewFn = await callViewClient(view.jsHash as Ref, {});
+      const viewFn = await callViewClient(view.jsHash as Ref);
       const rendered = renderDom(viewFn);
 
       mount.innerHTML = "";

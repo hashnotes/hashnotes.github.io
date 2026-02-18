@@ -183,6 +183,8 @@ const renderPattern = (p: AstNode): string => {
     case "Identifier":
       assertSafeIdent(p.name);
       return p.name;
+    case "AssignmentPattern":
+      return `${renderPattern(p.left)} = ${renderExpr(p.right)}`;
     case "RestElement":
       return `...${renderPattern(p.argument)}`;
     case "ArrayPattern":
@@ -228,6 +230,9 @@ const validateNoReservedRuntimeNames = (program: AstNode, reservedNames: string[
     switch (p.type) {
       case "Identifier":
         hit(p.name);
+        return;
+      case "AssignmentPattern":
+        visitPattern(p.left);
         return;
       case "RestElement":
         visitPattern(p.argument);

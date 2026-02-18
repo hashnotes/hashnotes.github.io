@@ -30,13 +30,13 @@ type HistoryEntry = {
 
 // --- header ---
 
-const HEADER_RE = /^(\/\/ js-note: [^\n]*\n|import type \{} from "[^"]*";\s*\/\/ ts-note\n)*/;
+const HEADER_RE = /^(\/\/ ts-note: [^\n]*\n|\/\/ js-note: [^\n]*\n)*/;
 
-/** Strip header lines (js-note comment + ts-note type import) from source. */
+/** Strip // ts-note: and // js-note: header lines from source. */
 const stripHeader = (src: string): string => src.replace(HEADER_RE, "");
 
 const makeHeader = (tsHash: string, jsHash: string): string =>
-  `import type {} from "./notes/${tsHash}.ts"; // ts-note\n// js-note: notes/${jsHash}.js\n`;
+  `// ts-note: notes/${tsHash}.ts\n// js-note: notes/${jsHash}.js\n`;
 
 // --- history ---
 

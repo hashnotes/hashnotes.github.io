@@ -23,6 +23,7 @@ it("playground e2e: addNote/getNote roundtrip for mixed payload shapes", async (
 
 it("playground e2e: callNote store roundtrip for different key/value objects", async () => {
   const fn = `
+    const [arg] = args;
     store.set(arg.key, arg.value);
     return store.get(arg.key);
   `;
@@ -36,7 +37,7 @@ it("playground e2e: callNote store roundtrip for different key/value objects", a
 
   await Promise.all(
     cases.map(async (payload) => {
-      const result = await callNote(fn, payload);
+      const result = await callNote(fn, [payload]);
       assertEq(result, payload.value);
     })
   );
@@ -44,9 +45,10 @@ it("playground e2e: callNote store roundtrip for different key/value objects", a
 
 it("client fuel runner: sync local store + async remoteCall", async () => {
   const fn = `
+    const [arg] = args;
     store.set(arg.key, arg.value);
     const local = store.get(arg.key);
-    const remoteValue = await remote("return arg", arg.value);
+    const remoteValue = await remote("return args[0]")(arg.value);
     return { local, remote: remoteValue };
   `;
 
@@ -55,42 +57,43 @@ it("client fuel runner: sync local store + async remoteCall", async () => {
     value: { ok: true, list: [1, 2, 3] },
   };
 
-  const result = await callNoteClient(fn, payload, { fuel: 100000 });
+  const result = await callNoteClient(fn, [payload], { fuel: 100000 });
   assertEq(result, { local: payload.value, remote: payload.value });
 });
 
 it("client fuel runner: call(fn,arg) uses isolated child store", async () => {
   const childFn = `
-    store.set("shared", arg);
+    store.set("shared", args[0]);
     return store.get("shared");
   `;
 
   const parentFn = `
+    const [arg] = args;
     store.set("shared", "parent");
-    const child = await call(arg.childFn, arg.childValue);
+    const child = await call(arg.childFn, [arg.childValue]);
     const outer = store.get("shared");
     return { outer, child };
   `;
 
-  const result = await callNoteClient(parentFn, { childFn, childValue: "child" }, { fuel: 100000 });
+  const result = await callNoteClient(parentFn, [{ childFn, childValue: "child" }], { fuel: 100000 });
   assertEq(result, { outer: "parent", child: "child" });
 });
 
 it("client fuel runner: remote cannot use local store space", async () => {
   const fn = `
     store.set("scope", "local");
-    await remote("store.set('scope', 'remote'); return store.get('scope')", null);
+    await remote("store.set('scope', 'remote'); return store.get('scope')")();
     return store.get("scope");
   `;
 
-  const result = await callNoteClient(fn, null, { fuel: 100000 });
+  const result = await callNoteClient(fn, [], { fuel: 100000 });
   assertEq(result, "local");
 });
 
 it("client view runner: returns (upper)=>VDom and can call upper.update", async () => {
-  // New inlined format: arg IS the upper object
+  // New inlined format: args[0] IS the upper object
   const fn = `
-    const upper = arg;
+    const [upper] = args;
     const root = HTML.div(
       HTML.p("hello"),
       HTML.button("inc")

@@ -32,7 +32,7 @@ const makeStore = (
   },
 });
 
-type LocalExecutor = (fn: Ref | Jsonable, arg: Ref | Jsonable) => Promise<unknown>;
+type LocalExecutor = (fn: Ref | Jsonable, args: Ref | Jsonable) => Promise<unknown>;
 
 /**
  * Parse __deps from a compiled note body.
@@ -67,29 +67,30 @@ const createLocalExecutor = (options: ClientFuelOptions): LocalExecutor => {
     }
   };
 
-  const callLocal: LocalExecutor = async (fnInput: Ref | Jsonable, argInput: Ref | Jsonable): Promise<unknown> => {
+  const callLocal: LocalExecutor = async (fnInput: Ref | Jsonable, argsInput: Ref | Jsonable): Promise<unknown> => {
     const fnRef = await asRef(fnInput);
-    const argRef = await asRef(argInput);
+    const argsRef = await asRef(argsInput);
 
     const fnNote = await deRef(fnRef);
     if (typeof fnNote !== "string") throw new Error("function note must resolve to a string");
-    const argNote = await deRef(argRef);
+    const argsNote = await deRef(argsRef);
+    const args = Array.isArray(argsNote) ? argsNote : [argsNote];
 
     const store = makeStore(fnRef, memStore, ls);
 
-    const remote = async (fn: unknown, remoteArg?: Ref | Jsonable): Promise<Jsonable> => {
+    const remote = (fn: unknown): (...remoteArgs: (Ref | Jsonable)[]) => Promise<Jsonable> => {
       const hash = fnToHash.get(fn as Function) ?? fn;
-      return callNote(hash as Ref | Jsonable, remoteArg === undefined ? null : remoteArg);
+      return (...remoteArgs: (Ref | Jsonable)[]) => callNote(hash as Ref | Jsonable, remoteArgs);
     };
 
-    /** Return a callable wrapper that runs the dep's body with arg = callArg, own store. */
-    const getFuncSync = (ref: string): (callArg: unknown) => unknown => {
+    /** Return a callable wrapper that runs the dep's body with args array, own store. */
+    const getFuncSync = (ref: string): (...callArgs: unknown[]) => unknown => {
       const src = noteCache.get(ref);
       if (src === undefined) throw new Error(`getFuncSync: note ${ref} not in cache`);
       if (typeof src !== "string") throw new Error(`getFuncSync: note ${ref} is not code`);
-      const fn = (callArg: unknown) => {
+      const fn = (...callArgs: unknown[]) => {
         const depStore = makeStore(ref, memStore, ls);
-        const result = runWithFuelShared(src, fuelRef, { ...env, arg: callArg, store: depStore });
+        const result = runWithFuelShared(src, fuelRef, { ...env, args: callArgs, store: depStore });
         if ("err" in result) throw new Error(result.err);
         return result.ok;
       };
@@ -106,8 +107,7 @@ const createLocalExecutor = (options: ClientFuelOptions): LocalExecutor => {
 
     const env: Record<string, unknown> = {
       ...(options.env ?? {}),
-      arg: argNote,
-      argRef,
+      args,
       call: callLocal,
       callNote: callLocal,
       remote,
@@ -121,6 +121,7 @@ const createLocalExecutor = (options: ClientFuelOptions): LocalExecutor => {
       hashData,
       fromjson,
       HTML,
+      JSON,
       console,
     };
 
@@ -143,19 +144,19 @@ const createLocalExecutor = (options: ClientFuelOptions): LocalExecutor => {
 
 export const callNoteClient = async (
   fn: Ref | Jsonable,
-  arg?: Ref | Jsonable,
+  args?: (Ref | Jsonable)[],
   options: ClientFuelOptions = {}
 ): Promise<Jsonable> => {
   const callLocal = createLocalExecutor(options);
-  return (await callLocal(fn, arg === undefined ? null : arg)) as Jsonable;
+  return (await callLocal(fn, args ?? [])) as Jsonable;
 };
 
 export const callViewClient = async (
   fn: Ref | Jsonable,
-  _arg?: Ref | Jsonable,
+  _args?: (Ref | Jsonable)[],
   options: ClientFuelOptions = {}
 ): Promise<(upper: UPPER) => VDom> => {
-  // View notes have inlined bodies — `arg` is the upper object.
+  // View notes have inlined bodies — args[0] is the upper object.
   // Pre-fetch dep sources async, then return a sync wrapper.
   const fuelRef = { value: options.fuel ?? 100000 };
   const noteCache = new Map<string, Jsonable>();
@@ -184,19 +185,19 @@ export const callViewClient = async (
 
   const store = makeStore(fnRef, memStore, ls);
 
-  const remote = async (fn: unknown, remoteArg?: Ref | Jsonable): Promise<Jsonable> => {
+  const remote = (fn: unknown): (...remoteArgs: (Ref | Jsonable)[]) => Promise<Jsonable> => {
     const hash = fnToHash.get(fn as Function) ?? fn;
-    return callNote(hash as Ref | Jsonable, remoteArg === undefined ? null : remoteArg);
+    return (...remoteArgs: (Ref | Jsonable)[]) => callNote(hash as Ref | Jsonable, remoteArgs);
   };
 
-  /** Return a callable wrapper that runs the dep's body with arg = callArg, own store. */
-  const getFuncSync = (ref: string): (callArg: unknown) => unknown => {
+  /** Return a callable wrapper that runs the dep's body with args array, own store. */
+  const getFuncSync = (ref: string): (...callArgs: unknown[]) => unknown => {
     const src = noteCache.get(ref);
     if (src === undefined) throw new Error(`getFuncSync: note ${ref} not in cache`);
     if (typeof src !== "string") throw new Error(`getFuncSync: note ${ref} is not code`);
-    const fn = (callArg: unknown) => {
+    const fn = (...callArgs: unknown[]) => {
       const depStore = makeStore(ref, memStore, ls);
-      const result = runWithFuelShared(src, fuelRef, { ...baseEnv, arg: callArg, store: depStore });
+      const result = runWithFuelShared(src, fuelRef, { ...baseEnv, args: callArgs, store: depStore });
       if ("err" in result) throw new Error(result.err);
       return result.ok;
     };
@@ -213,12 +214,12 @@ export const callViewClient = async (
 
   const baseEnv: Record<string, unknown> = {
     ...(options.env ?? {}),
-    remote, getFuncSync, getDataSync, store, addNote, getNote, asRef, deref: deRef, hashData, fromjson, HTML, console,
+    remote, getFuncSync, getDataSync, store, addNote, getNote, asRef, deref: deRef, hashData, fromjson, HTML, JSON, console,
   };
 
-  // Inlined body — arg is the upper object.
+  // Inlined body — args[0] is the upper object.
   return (upper: UPPER): VDom => {
-    const result = runWithFuelShared(fnNote, fuelRef, { ...baseEnv, arg: upper });
+    const result = runWithFuelShared(fnNote, fuelRef, { ...baseEnv, args: [upper] });
     if ("err" in result) throw new Error(result.err);
     return result.ok as VDom;
   };

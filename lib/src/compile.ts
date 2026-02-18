@@ -6,7 +6,7 @@
  *   2. Parse as ES module with acorn
  *   3. String-slice the JS source, replacing:
  *      - imports  → `const fn = getFuncSync("#hash")` or `getDataSync("#hash")`
- *      - export arrow  → inline body with `const param = arg;`
+ *      - export arrow  → inline body with `const [a, b, c] = args;`
  *   4. Prepend `const __deps = [...]`
  *
  * Constraint: each file exports exactly one function.
@@ -132,10 +132,12 @@ export const compileModule = (
   // 6. Inline the arrow function body
   if (exportArrow) {
     const params = exportArrow.params as N[];
-    if (params.length > 1) throw new Error("exported arrow must have 0 or 1 param");
     if (params.length === 1) {
       const p = jsSrc.slice(params[0].start, params[0].end);
-      if (p !== "arg") lines.push("const " + p + " = arg;");
+      if (p !== "args") lines.push("const [" + p + "] = args;");
+    } else if (params.length > 1) {
+      const ps = params.map(p => jsSrc.slice(p.start, p.end));
+      lines.push("const [" + ps.join(", ") + "] = args;");
     }
 
     if (exportArrow.body.type === "BlockStatement") {
