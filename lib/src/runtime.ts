@@ -51,19 +51,20 @@ const createLocalExecutor = (options: ClientFuelOptions): LocalExecutor => {
     try { return typeof localStorage !== "undefined" ? localStorage : undefined; } catch { return undefined; }
   })();
 
-  // Cache: hash → source string (pre-fetched, not executed)
-  const sourceCache = new Map<string, string>();
+  // Cache: hash → note data (string for code, any Jsonable for data)
+  const noteCache = new Map<string, Jsonable>();
 
   // Map from wrapper function → hash (for remote() to resolve)
   const fnToHash = new Map<Function, string>();
 
-  /** Recursively fetch dep sources into sourceCache (no execution). */
+  /** Recursively fetch dep sources into noteCache (no execution). */
   const prefetch = async (ref: string): Promise<void> => {
-    if (sourceCache.has(ref)) return;
-    const src = await deRef(ref as Ref);
-    if (typeof src !== "string") throw new Error("prefetch: note must be a string");
-    sourceCache.set(ref, src);
-    for (const dep of parseDeps(src)) await prefetch(dep);
+    if (noteCache.has(ref)) return;
+    const data = await deRef(ref as Ref);
+    noteCache.set(ref, data as Jsonable);
+    if (typeof data === "string") {
+      for (const dep of parseDeps(data)) await prefetch(dep);
+    }
   };
 
   const callLocal: LocalExecutor = async (fnInput: Ref | Jsonable, argInput: Ref | Jsonable): Promise<unknown> => {
@@ -83,8 +84,9 @@ const createLocalExecutor = (options: ClientFuelOptions): LocalExecutor => {
 
     /** Return a callable wrapper that runs the dep's body with arg = callArg, own store. */
     const getFuncSync = (ref: string): (callArg: unknown) => unknown => {
-      const src = sourceCache.get(ref);
+      const src = noteCache.get(ref);
       if (src === undefined) throw new Error(`getFuncSync: note ${ref} not in cache`);
+      if (typeof src !== "string") throw new Error(`getFuncSync: note ${ref} is not code`);
       const fn = (callArg: unknown) => {
         const depStore = makeStore(ref, memStore, ls);
         const result = runWithFuelShared(src, fuelRef, { ...env, arg: callArg, store: depStore });
@@ -93,6 +95,13 @@ const createLocalExecutor = (options: ClientFuelOptions): LocalExecutor => {
       };
       fnToHash.set(fn, ref);
       return fn;
+    };
+
+    /** Return JSON data from a prefetched note. */
+    const getDataSync = (ref: string): unknown => {
+      const data = noteCache.get(ref);
+      if (data === undefined) throw new Error(`getDataSync: note ${ref} not in cache`);
+      return data;
     };
 
     const env: Record<string, unknown> = {
@@ -104,6 +113,7 @@ const createLocalExecutor = (options: ClientFuelOptions): LocalExecutor => {
       remote,
       store,
       getFuncSync,
+      getDataSync,
       addNote,
       getNote,
       asRef,
@@ -148,7 +158,7 @@ export const callViewClient = async (
   // View notes have inlined bodies — `arg` is the upper object.
   // Pre-fetch dep sources async, then return a sync wrapper.
   const fuelRef = { value: options.fuel ?? 100000 };
-  const sourceCache = new Map<string, string>();
+  const noteCache = new Map<string, Jsonable>();
   const memStore = new Map<string, Jsonable>();
   const ls = (() => {
     try { return typeof localStorage !== "undefined" ? localStorage : undefined; } catch { return undefined; }
@@ -161,13 +171,14 @@ export const callViewClient = async (
   const fnNote = await deRef(fnRef);
   if (typeof fnNote !== "string") throw new Error("view note must resolve to a string");
 
-  /** Recursively fetch dep sources into sourceCache (no execution). */
+  /** Recursively fetch dep data into noteCache (no execution). */
   const prefetch = async (ref: string): Promise<void> => {
-    if (sourceCache.has(ref)) return;
-    const src = await deRef(ref as Ref);
-    if (typeof src !== "string") throw new Error("prefetch: note must be a string");
-    sourceCache.set(ref, src);
-    for (const dep of parseDeps(src)) await prefetch(dep);
+    if (noteCache.has(ref)) return;
+    const data = await deRef(ref as Ref);
+    noteCache.set(ref, data as Jsonable);
+    if (typeof data === "string") {
+      for (const dep of parseDeps(data)) await prefetch(dep);
+    }
   };
   for (const dep of parseDeps(fnNote)) await prefetch(dep);
 
@@ -180,8 +191,9 @@ export const callViewClient = async (
 
   /** Return a callable wrapper that runs the dep's body with arg = callArg, own store. */
   const getFuncSync = (ref: string): (callArg: unknown) => unknown => {
-    const src = sourceCache.get(ref);
+    const src = noteCache.get(ref);
     if (src === undefined) throw new Error(`getFuncSync: note ${ref} not in cache`);
+    if (typeof src !== "string") throw new Error(`getFuncSync: note ${ref} is not code`);
     const fn = (callArg: unknown) => {
       const depStore = makeStore(ref, memStore, ls);
       const result = runWithFuelShared(src, fuelRef, { ...baseEnv, arg: callArg, store: depStore });
@@ -192,9 +204,16 @@ export const callViewClient = async (
     return fn;
   };
 
+  /** Return JSON data from a prefetched note. */
+  const getDataSync = (ref: string): unknown => {
+    const data = noteCache.get(ref);
+    if (data === undefined) throw new Error(`getDataSync: note ${ref} not in cache`);
+    return data;
+  };
+
   const baseEnv: Record<string, unknown> = {
     ...(options.env ?? {}),
-    remote, getFuncSync, store, addNote, getNote, asRef, deref: deRef, hashData, fromjson, HTML, console,
+    remote, getFuncSync, getDataSync, store, addNote, getNote, asRef, deref: deRef, hashData, fromjson, HTML, console,
   };
 
   // Inlined body — arg is the upper object.

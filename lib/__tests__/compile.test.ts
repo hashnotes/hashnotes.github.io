@@ -174,6 +174,49 @@ export const view = (upper) => {
   });
 });
 
+describe("compileModule JSON imports", () => {
+  it("emits getDataSync for .json imports", () => {
+    const src = `
+import config from "./config.json";
+export const view = (upper) => HTML.div(config.title);
+`;
+    const jsonSpecs = new Set(["./config.json"]);
+    const out = compileModule(src, (spec) =>
+      spec === "./config.json" ? "#data_hash" : spec
+    , jsonSpecs);
+    assert(out.includes(`const config = getDataSync("#data_hash")`), "should use getDataSync: " + out);
+    assert(!out.includes("getFuncSync"), "should not use getFuncSync for JSON: " + out);
+  });
+
+  it("mixes getFuncSync and getDataSync", () => {
+    const src = `
+import { helper } from "./#dep";
+import data from "./items.json";
+export const view = (upper) => helper(data);
+`;
+    const jsonSpecs = new Set(["./items.json"]);
+    const out = compileModule(src, (spec) => {
+      if (spec === "./#dep") return "#dep_js";
+      if (spec === "./items.json") return "#items_hash";
+      return spec;
+    }, jsonSpecs);
+    assert(out.includes(`const helper = getFuncSync("#dep_js")`), "code import: " + out);
+    assert(out.includes(`const data = getDataSync("#items_hash")`), "json import: " + out);
+  });
+
+  it("includes JSON dep in __deps", () => {
+    const src = `
+import config from "./config.json";
+export const view = (upper) => HTML.div(config.title);
+`;
+    const jsonSpecs = new Set(["./config.json"]);
+    const out = compileModule(src, (spec) =>
+      spec === "./config.json" ? "#cfg_hash" : spec
+    , jsonSpecs);
+    assert(out.includes('"#cfg_hash"'), "should include in deps: " + out);
+  });
+});
+
 describe("stripTypes", () => {
   it("strips TypeScript annotations from function body", () => {
     const src = `const d = arg.d as number;\nlet c = (store.get("count") || 0) as number;`;

@@ -1,9 +1,7 @@
-// ts-note: notes/#3b05af1516a906fe4a39a05e6c760f67.ts
-// js-note: notes/#801ed0c087bd9dd9ec58ffa1eee29458.js
 
 
-import { counterFn } from "./notes/#e4ed00ce23197e547addafe7c3bd34e9.ts";
-import data from "./data.json"
+import { counterFn } from "./#e4ed00ce23197e547addafe7c3bd34e9.ts";
+import data from "./#f39e8e928f5953a40e640ae0b34cdc3d.json"
 
 export const view = ({update}: UPPER) => {
 

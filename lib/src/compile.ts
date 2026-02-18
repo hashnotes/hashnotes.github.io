@@ -5,7 +5,7 @@
  *   1. Strip TypeScript types (via node:module)
  *   2. Parse as ES module with acorn
  *   3. String-slice the JS source, replacing:
- *      - imports  → `const fn = getFuncSync("#hash")`
+ *      - imports  → `const fn = getFuncSync("#hash")` or `getDataSync("#hash")`
  *      - export arrow  → inline body with `const param = arg;`
  *   4. Prepend `const __deps = [...]`
  *
@@ -52,6 +52,7 @@ const resolveHash = (rr: ResolveResult): string =>
 export const compileModule = (
   tsSrc: string,
   resolve?: (specifier: string) => ResolveResult,
+  jsonImportSpecs?: Set<string>,
 ): string => {
   // 1. Strip types
   const jsSrc = stripTypeScriptTypes(tsSrc, { mode: "strip" });
@@ -64,6 +65,7 @@ export const compileModule = (
 
   // 3. Collect imports
   const importHashes = new Map<string, string>(); // name → hash
+  const jsonImportNames = new Set<string>(); // names that are JSON data imports
   const sideEffectHashes: string[] = [];
   const nonImportNodes: N[] = [];
 
@@ -71,12 +73,16 @@ export const compileModule = (
     if (node.type === "ImportDeclaration") {
       const specs = node.specifiers as N[];
       const raw: string = node.source.value;
+      const isJson = jsonImportSpecs?.has(raw) ?? false;
       const rr = resolve ? resolve(raw) : raw;
       const hash = resolveHash(rr);
       if (specs.length === 0) {
         sideEffectHashes.push(hash);
       } else {
-        for (const s of specs) importHashes.set(s.local.name, hash);
+        for (const s of specs) {
+          importHashes.set(s.local.name, hash);
+          if (isJson) jsonImportNames.add(s.local.name);
+        }
       }
     } else {
       nonImportNodes.push(node);
@@ -108,12 +114,13 @@ export const compileModule = (
   // 5. Build output using string slices from jsSrc
   const lines: string[] = [];
 
-  // Emit getFuncSync bindings for all imports
+  // Emit bindings for all imports
   for (const hash of sideEffectHashes) {
     lines.push(`getFuncSync(${JSON.stringify(hash)});`);
   }
   for (const [name, hash] of importHashes) {
-    lines.push(`const ${name} = getFuncSync(${JSON.stringify(hash)});`);
+    const getter = jsonImportNames.has(name) ? "getDataSync" : "getFuncSync";
+    lines.push(`const ${name} = ${getter}(${JSON.stringify(hash)});`);
   }
 
   // Emit non-import, non-export statements verbatim
