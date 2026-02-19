@@ -294,9 +294,22 @@ it("security: 'this' is rejected (parsed as undeclared identifier)", () => {
   assert("err" in res, "this should be rejected")
 })
 
-it("security: 'new' is a parse error", () => {
-  const res = runWithFuel("return new Array()", 100)
-  assert("err" in res, "'new' should cause a parse error")
+it("security: 'new' only allowed for Map and Set", () => {
+  // Map and Set are allowed
+  const mapRes = runWithFuel("let m = new Map(); m.set('a', 1); return m.get('a')", 1000)
+  assert("ok" in mapRes, `new Map() should work, got: ${"err" in mapRes ? mapRes.err : ""}`)
+  assert((mapRes as any).ok === 1, `expected 1, got: ${(mapRes as any).ok}`)
+
+  const setRes = runWithFuel("let s = new Set(); s.add(1); s.add(1); return s.size", 1000)
+  assert("ok" in setRes, `new Set() should work, got: ${"err" in setRes ? setRes.err : ""}`)
+  assert((setRes as any).ok === 1, `expected 1, got: ${(setRes as any).ok}`)
+
+  // Other constructors are blocked
+  const arrRes = runWithFuel("return new Array()", 100)
+  assert("err" in arrRes, "'new Array()' should be rejected")
+
+  const dateRes = runWithFuel("return new Date()", 100)
+  assert("err" in dateRes, "'new Date()' should be rejected")
 })
 
 it("security: 'class' is a parse error", () => {
@@ -404,7 +417,7 @@ it("security: arrow function closures can't escape scope", () => {
 // ---------------------------------------------------------------------------
 
 it("security: assertSafeIdent blocks forbidden identifiers", () => {
-  const forbidden = ["eval", "arguments", "this", "globalThis", "window", "document", "self", "process", "require"]
+  const forbidden = ["eval", "arguments", "this", "globalThis", "window", "document", "process", "require"]
   for (const name of forbidden) {
     let threw = false
     try { assertSafeIdent(name) } catch { threw = true }

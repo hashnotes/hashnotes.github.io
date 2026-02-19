@@ -8,7 +8,7 @@ const mouseEvents : MouseEventType[] = ["click", "mousemove", "mouseup", "moused
 const keyboardEvents : KeyboardEventType[] = ["keydown", "keyup"];
 const svgNamespace = "http://www.w3.org/2000/svg";
 const svgTags = new Set(["svg", "path", "g", "line", "polyline", "polygon", "circle", "ellipse", "rect", "text"]);
-const allowedAttributeNames = new Set(["viewBox","width","height","xmlns","d","fill","stroke","stroke-width","stroke-linecap","stroke-linejoin","stroke-dasharray","stroke-dashoffset","x","y","x1","y1","x2","y2","cx","cy","r","rx","ry","points","transform","opacity","font-size","font-family","font-weight","text-anchor","dominant-baseline","dx","dy"]);
+const allowedAttributeNames = new Set(["viewBox","width","height","xmlns","d","fill","stroke","stroke-width","stroke-linecap","stroke-linejoin","stroke-dasharray","stroke-dashoffset","x","y","x1","y1","x2","y2","cx","cy","r","rx","ry","points","transform","opacity","font-size","font-family","font-weight","text-anchor","dominant-baseline","dx","dy","href","target","rel"]);
 
 
 
@@ -181,6 +181,8 @@ const mkDom = (tag: string) => (...content:Content[]) =>{
 let div= mkDom("div")
 let svg = mkDom("svg")
 let path = mkDom("path")
+let g = mkDom("g")
+let rect = mkDom("rect")
 let text = (attrs: Record<string, string> , ...content: string[]) => ({tag: "text", style: {}, attrs: attrs as {pos:string}, textContent: content.join(" "), id: "", children: []});
 
 const popup = (...cs:VDom[])=>{
@@ -268,20 +270,31 @@ export const HTML = {
       dy?: string
     } = {}
   ) => {
+    const fs = Number(options.fontSize ?? 12)
+    const x = options.x ?? "50"
+    const y = options.y ?? "50"
     const attrs: Record<string, string> = {
       fill: options.fill ?? "var(--color)",
-      "font-size": options.fontSize ?? "12",
-      x: options.x ?? "50",
-      y: options.y ?? "50",
+      "font-size": String(fs),
+      x, y,
       "text-anchor": options.textAnchor ?? "middle",
       "dominant-baseline": options.dominantBaseline ?? "middle",
     }
-    if (options.background) attrs.background = options.background
     if (options.fontFamily) attrs["font-family"] = options.fontFamily
     if (options.fontWeight) attrs["font-weight"] = options.fontWeight
     if (options.dx) attrs.dx = options.dx
     if (options.dy) attrs.dy = options.dy
-    return text(attrs , content)
+    const textNode = text(attrs, content)
+    if (!options.background) return textNode
+    const pad = fs * 0.4
+    const rw = content.length * fs * 0.6 + pad * 2
+    const rh = fs + pad * 2
+    const rx = Number(x) - rw / 2
+    const ry = Number(y) - rh / 2
+    return g(
+      rect({ attrs: { x: String(rx), y: String(ry), width: String(rw), height: String(rh), fill: options.background, rx: String(pad) } }),
+      textNode,
+    )
   },
   popup
 }

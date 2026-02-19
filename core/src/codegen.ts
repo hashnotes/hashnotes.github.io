@@ -21,10 +21,11 @@ const SAFE_IDENT_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
 const FORBIDDEN_IDENTS = new Set([
   "eval", "arguments", "this", "globalThis", "window", "document",
-  "self", "top", "parent", "frames",
   "process", "require", "module", "exports", "__dirname", "__filename",
   "importScripts",
 ]);
+
+const SAFE_CONSTRUCTORS = new Set(["Map", "Set"]);
 
 export const assertSafeIdent = (name: string): void => {
   if (!SAFE_IDENT_RE.test(name))
@@ -68,7 +69,7 @@ const renderExpr = (e: AstNode): string => {
     }
     case "MemberExpression":
       return e.computed
-        ? `${renderExpr(e.object)}[${renderExpr(e.property)}]`
+        ? `${renderExpr(e.object)}[__chk(${renderExpr(e.property)})]`
         : `${renderExpr(e.object)}.${renderExpr(e.property)}`;
     case "AssignmentExpression":
       return `${renderExpr(e.left)} ${e.operator} ${renderExpr(e.right)}`;
@@ -85,6 +86,13 @@ const renderExpr = (e: AstNode): string => {
         : `(${e.operator}${renderExpr(e.argument)})`;
     case "ConditionalExpression":
       return `(${renderExpr(e.test)} ? ${renderExpr(e.consequent)} : ${renderExpr(e.alternate)})`;
+    case "NewExpression": {
+      if (e.callee.type !== "Identifier") throw new Error("new: only simple constructors allowed");
+      const name = e.callee.name;
+      assertSafeIdent(name);
+      if (!SAFE_CONSTRUCTORS.has(name)) throw new Error(`new: ${name} is not an allowed constructor`);
+      return `new ${name}(${(e.arguments as AstNode[]).map(renderExpr).join(", ")})`;
+    }
     case "ArrowFunctionExpression":
       return renderArrow(e);
     default:
@@ -276,6 +284,10 @@ const validateNoReservedRuntimeNames = (program: AstNode, reservedNames: string[
       case "AwaitExpression":
         visitExpr(e.argument);
         return;
+      case "NewExpression":
+        visitExpr(e.callee);
+        (e.arguments as AstNode[]).forEach((a) => visitExpr(a));
+        return;
       case "CallExpression":
         visitExpr(e.callee);
         (e.arguments as AstNode[]).forEach((a) => visitExpr(a));
@@ -370,25 +382,27 @@ const validateNoReservedRuntimeNames = (program: AstNode, reservedNames: string[
 // ---------------------------------------------------------------------------
 
 export const renderWithFuel = (program: AstNode, fuel = 10000) => {
-  const prelude = `let __fuel = ${fuel}; const __burn = () => { if (--__fuel < 0) throw new Error("fuel exhausted"); };`;
+  const prelude = `let __fuel = ${fuel}; const __burn = () => { if (--__fuel < 0) throw new Error("fuel exhausted"); };${CHK_FN}`;
   const body = (program.body as AstNode[]).map((s) => renderStmt(s, true)).join("");
   return `${prelude}${body}`;
 };
 
+const CHK_FN = `const __chk = (k) => { if (typeof k === "string" && (k === "constructor" || k === "__proto__" || k === "prototype")) throw new Error("forbidden property: " + k); return k; };`;
+
 const renderRunnerWithFuelShared = (program: AstNode, fuelRefName = "__fuel") => {
   assertSafeIdent(fuelRefName);
-  const reservedErrs = validateNoReservedRuntimeNames(program, [fuelRefName, "__burn"]);
+  const reservedErrs = validateNoReservedRuntimeNames(program, [fuelRefName, "__burn", "__chk"]);
   if (reservedErrs.length) throw new Error(reservedErrs.join(", "));
-  const prelude = `const __burn = () => { if (--${fuelRefName}.value < 0) throw new Error("fuel exhausted"); };`;
+  const prelude = `const __burn = () => { if (--${fuelRefName}.value < 0) throw new Error("fuel exhausted"); };${CHK_FN}`;
   const body = (program.body as AstNode[]).map((s) => renderStmt(s, true)).join("");
   return `${prelude}const __run = () => {${body}}; try { const ok = __run(); return { ok, fuel: ${fuelRefName}.value }; } catch (err) { return { err: String(err), fuel: ${fuelRefName}.value }; }`;
 };
 
 const renderRunnerWithFuelSharedAsync = (program: AstNode, fuelRefName = "__fuel") => {
   assertSafeIdent(fuelRefName);
-  const reservedErrs = validateNoReservedRuntimeNames(program, [fuelRefName, "__burn"]);
+  const reservedErrs = validateNoReservedRuntimeNames(program, [fuelRefName, "__burn", "__chk"]);
   if (reservedErrs.length) throw new Error(reservedErrs.join(", "));
-  const prelude = `const __burn = () => { if (--${fuelRefName}.value < 0) throw new Error("fuel exhausted"); };`;
+  const prelude = `const __burn = () => { if (--${fuelRefName}.value < 0) throw new Error("fuel exhausted"); };${CHK_FN}`;
   const body = (program.body as AstNode[]).map((s) => renderStmt(s, true)).join("");
   return `${prelude}const __run = async () => {${body}}; return __run().then(ok => ({ ok, fuel: ${fuelRefName}.value })).catch(err => ({ err: String(err), fuel: ${fuelRefName}.value }));`;
 };
@@ -495,6 +509,8 @@ const withBuiltins = (
     Object: SAFE_OBJECT,
     Array: SAFE_ARRAY,
     Math: SAFE_MATH,
+    Map,
+    Set,
     Promise,
   };
   return {

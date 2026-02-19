@@ -55,6 +55,10 @@ export const validateScopes = (program: AstNode, allowedGlobals: string[] = []) 
       case "AwaitExpression":
         visitExpr(e.argument);
         return;
+      case "NewExpression":
+        visitExpr(e.callee);
+        (e.arguments as AstNode[]).forEach((a) => visitExpr(a));
+        return;
       case "CallExpression":
         visitExpr(e.callee);
         (e.arguments as AstNode[]).forEach((a) => visitExpr(a));
@@ -168,14 +172,16 @@ export const validateNoPrototype = (program: AstNode) => {
         if (!e.computed && e.property.type === "Identifier" && forbiddenMembers.has(e.property.name)) {
           errors.push("prototype access");
         }
-        if (e.computed && !(e.property.type === "Literal" && typeof e.property.value === "number")) {
-          errors.push("only numeric literal indexing allowed");
-        }
+        // computed access is allowed — runtime __chk guards against forbidden keys
         visitExpr(e.object);
         if (e.computed) visitExpr(e.property);
         return;
       case "SpreadElement":
         visitExpr(e.argument);
+        return;
+      case "NewExpression":
+        visitExpr(e.callee);
+        (e.arguments as AstNode[]).forEach((a) => visitExpr(a));
         return;
       case "CallExpression":
         visitExpr(e.callee);
