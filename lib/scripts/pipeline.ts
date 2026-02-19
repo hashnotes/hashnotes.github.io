@@ -1,17 +1,36 @@
-// ts-note: notes/#0508ee6e4180b1ea6f685ac6bd6315cd.ts
-// js-note: notes/#76f42875a897624143c34684a58a1bd2.js
+// ts-note: notes/#a782af823fd33aacde46fbd74c0ee269.ts
+// js-note: notes/#e17bce2eb689c9334e17c873520c9864.js
 
 
+
+// export type Graph = {
+
+//   $:string,
+//   srcs: Graph[],
+//   code: string
+
+// }
+
+type Schema = Jsonable;
 
 export type Graph = {
-
-  $:string,
-  srcs: Graph[],
+  $: "input",
+} | {
+  $: "logic",
+  inputs: {[key: string]: Graph},
   code: string
-
+} | {
+  $: "loop",
+  input: Graph,
+  condition: Graph,
+  body: Graph,
 }
 
-export const  graph = (tag: string, srcs: Graph[] = [], code: string =""):Graph=>{
-  return { $:tag, srcs, code }
-}
+
+
+// export const  graph = (tag: string, srcs: Graph[] = [], code: string =""):Graph=>{
+//   return { $:tag, srcs, code }
+// }
+
+
 

@@ -1,5 +1,5 @@
-// ts-note: notes/#8faaab43a0d231f75b100766f32fcbe6.ts
-// js-note: notes/#cdbfea7e9919ca95cd490944132dbd88.js
+// ts-note: notes/#710af7ed9a2e763976d761e6d39c1aa2.ts
+// js-note: notes/#41da62487a6cc1bb2817ffb81b49ddea.js
 export type DAG = {
   title: string,
   srcs: DAG[],
@@ -42,6 +42,38 @@ export const drawGraph = (graph: DAG, w: number, h: number, ctx: ViewContext): V
   let layers: DAG[][] = []
   for (let d = 0; d <= maxDepth; d++) {
     layers.push(allNodes.filter(n => depth.get(n) === d))
+  }
+
+  // barycenter ordering to reduce edge crossings
+  // build adjacency: for each node, which nodes connect to it?
+  let neighbors = new Map<DAG, DAG[]>()
+  allNodes.forEach(n => neighbors.set(n, []))
+  edges.forEach(e => {
+    neighbors.get(e[0])!.push(e[1])
+    neighbors.get(e[1])!.push(e[0])
+  })
+
+  // assign initial indices within each layer
+  let indexOf = new Map<DAG, number>()
+  layers.forEach(layer => layer.forEach((n, i) => indexOf.set(n, i)))
+
+  // sweep: for each layer, sort nodes by average index of neighbors in adjacent layers
+  let passes = 4
+  for (let p = 0; p < passes; p++) {
+    // down sweep (layer 0 to max)
+    layers.forEach(layer => {
+      layer.forEach(node => {
+        let nbrs = neighbors.get(node)!
+        let otherIdxs = nbrs.filter(n => depth.get(n) !== depth.get(node)).map(n => indexOf.get(n)!)
+        if (otherIdxs.length > 0) {
+          let sum = 0
+          otherIdxs.forEach(v => { sum = sum + v })
+          indexOf.set(node, sum / otherIdxs.length)
+        }
+      })
+      layer.sort((a, b) => indexOf.get(a)! - indexOf.get(b)!)
+      layer.forEach((n, i) => indexOf.set(n, i))
+    })
   }
 
   let layerCount = layers.length
