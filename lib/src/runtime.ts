@@ -1,7 +1,7 @@
 import { runWithFuelShared, runWithFuelSharedAsync } from "@hashnotes/core/codegen";
 import { fromjson, hashData, type Jsonable, type Ref } from "@hashnotes/core/notes";
 import { addNote, asRef, callNote, deRef, getNote } from "./db.ts";
-import { HTML, type UPPER, type VDom } from "./views.ts";
+import { HTML, type View, type ViewContext, type VDom } from "./views.ts";
 
 type ClientFuelOptions = {
   fuel?: number;
@@ -155,7 +155,7 @@ export const callViewClient = async (
   fn: Ref | Jsonable,
   _args?: (Ref | Jsonable)[],
   options: ClientFuelOptions = {}
-): Promise<(upper: UPPER) => VDom> => {
+): Promise<View> => {
   // View notes have inlined bodies — args[0] is the upper object.
   // Pre-fetch dep sources async, then return a sync wrapper.
   const fuelRef = { value: options.fuel ?? 100000 };
@@ -217,8 +217,8 @@ export const callViewClient = async (
     remote, getFuncSync, getDataSync, store, addNote, getNote, asRef, deref: deRef, hashData, fromjson, HTML, JSON, console,
   };
 
-  // Inlined body — args[0] is the upper object.
-  return (upper: UPPER): VDom => {
+  // Inlined body — args[0] is the window object.
+  return (upper: ViewContext): VDom => {
     const result = runWithFuelShared(fnNote, fuelRef, { ...baseEnv, args: [upper] });
     if ("err" in result) throw new Error(result.err);
     return result.ok as VDom;

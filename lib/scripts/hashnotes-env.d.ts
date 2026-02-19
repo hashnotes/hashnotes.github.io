@@ -19,7 +19,8 @@ type Jsonable =
   | { [key: string]: Jsonable };
 
 type VDom = import("../src/views.ts").VDom;
-type UPPER = import("../src/views.ts").UPPER;
+type ViewContext = import("../src/views.ts").ViewContext;
+type View = import("../src/views.ts").View;
 
 declare const args: any[];
 
@@ -43,21 +44,55 @@ declare const deref: (ref: Ref) => Promise<Jsonable>;
 declare const hashData: (value: Jsonable) => Ref;
 declare const fromjson: (x: string) => Jsonable;
 
+// Safe subset of standard globals
+declare const Object: {
+  keys(obj: any): string[];
+  values(obj: any): any[];
+  entries(obj: any): [string, any][];
+  fromEntries(entries: Iterable<[string, any]>): Record<string, any>;
+  assign(target: any, ...sources: any[]): any;
+  freeze<T>(obj: T): Readonly<T>;
+};
+declare const Array: {
+  isArray(v: unknown): v is unknown[];
+  from<T>(v: Iterable<T> | ArrayLike<T>, mapFn?: (v: T, i: number) => any): any[];
+  of<T>(...items: T[]): T[];
+};
+declare const Math: {
+  abs(x: number): number; ceil(x: number): number; floor(x: number): number; round(x: number): number;
+  min(...values: number[]): number; max(...values: number[]): number;
+  pow(base: number, exp: number): number; sqrt(x: number): number;
+  sign(x: number): number; trunc(x: number): number;
+  log(x: number): number; log2(x: number): number;
+  random(): number; PI: number; E: number;
+};
+
+type HtmlContent =
+  | string
+  | VDom
+  | HtmlContent[]
+  | { id: string }
+  | { style: Record<string, string> }
+  | { value: string }
+  | { href: string }
+  | { attrs: Record<string, string> }
+  | { onclick?: (e: any) => void; onmousedown?: (e: any) => void; onmouseup?: (e: any) => void; onmousemove?: (e: any) => void; onwheel?: (e: any) => void; onkeydown?: (e: any) => void; onkeyup?: (e: any) => void };
+
 declare const HTML: {
-  div: (...content: any[]) => VDom;
-  span: (...content: any[]) => VDom;
-  p: (...content: any[]) => VDom;
-  h1: (...content: any[]) => VDom;
-  h2: (...content: any[]) => VDom;
-  h3: (...content: any[]) => VDom;
-  h4: (...content: any[]) => VDom;
-  h5: (...content: any[]) => VDom;
-  h6: (...content: any[]) => VDom;
-  a: (...content: any[]) => VDom;
-  button: (...content: any[]) => VDom;
-  input: (...content: any[]) => VDom;
-  textarea: (...content: any[]) => VDom;
-  pre: (...content: any[]) => VDom;
+  div: (...content: HtmlContent[]) => VDom;
+  span: (...content: HtmlContent[]) => VDom;
+  p: (...content: HtmlContent[]) => VDom;
+  h1: (...content: HtmlContent[]) => VDom;
+  h2: (...content: HtmlContent[]) => VDom;
+  h3: (...content: HtmlContent[]) => VDom;
+  h4: (...content: HtmlContent[]) => VDom;
+  h5: (...content: HtmlContent[]) => VDom;
+  h6: (...content: HtmlContent[]) => VDom;
+  a: (...content: HtmlContent[]) => VDom;
+  button: (...content: HtmlContent[]) => VDom;
+  input: (...content: HtmlContent[]) => VDom;
+  textarea: (...content: HtmlContent[]) => VDom;
+  pre: (...content: HtmlContent[]) => VDom;
   svgPath: (
     pathData: string | string[],
     options?: {

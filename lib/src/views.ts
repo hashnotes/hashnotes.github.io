@@ -11,6 +11,8 @@ const svgTags = new Set(["svg", "path", "g", "line", "polyline", "polygon", "cir
 const allowedAttributeNames = new Set(["viewBox","width","height","xmlns","d","fill","stroke","stroke-width","stroke-linecap","stroke-linejoin","stroke-dasharray","stroke-dashoffset","x","y","x1","y1","x2","y2","cx","cy","r","rx","ry","points","transform","opacity","font-size","font-family","font-weight","text-anchor","dominant-baseline","dx","dy"]);
 
 
+
+
 export type MouseEvent = {
   type: MouseEventType
   target: VDom
@@ -29,10 +31,13 @@ type KeyboardEvent = {
   target: VDom,
 }
 
-export type UPPER = {
+export type ViewContext = {
   add: (parent: VDom, ...el: VDom[])=> void,
   del: (el: VDom) => void,
   update: (el: VDom) => void,
+  location: { pathname: string },
+  width: number,
+  height: number,
 }
 
 export type VDom = {
@@ -60,12 +65,15 @@ let elements = new WeakMap<VDom, Element>();
 
 
 
-export const renderDom = (mker: (ufn: UPPER) => VDom): HTMLElement => {
+export type View = (ctx: ViewContext) => VDom;
+
+export const renderDom = (mker: View, location: { pathname: string } = { pathname: "/" }, width = globalThis.innerWidth ?? 0, height = globalThis.innerHeight ?? 0): HTMLElement => {
 
   const render = (dom:VDom) : Element=>{
-    const el = svgTags.has(dom.tag)
-      ? document.createElementNS(svgNamespace, dom.tag)
-      : document.createElement(dom.tag)
+
+    const el = svgTags.has(dom.tag) ? document.createElementNS(svgNamespace, dom.tag)
+      : document.createElement(dom.tag);
+
     el.textContent = dom.textContent
     if ((el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) && dom.value) el.value = dom.value
     elements.set(dom, el)
@@ -116,7 +124,10 @@ export const renderDom = (mker: (ufn: UPPER) => VDom): HTMLElement => {
       if (!oldel) return
       oldel.replaceWith(render(el))
       doms.delete(oldel)
-    }
+    },
+    location,
+    width,
+    height,
   })) as HTMLElement
 }
 
@@ -141,9 +152,10 @@ type Content = string | VDom | Content[] | {id: string} | {style: Record<string,
 const mkDom = (tag: string) => (...content:Content[]) =>{
 
   let dm : VDom = {tag: tag, style: {}, attrs: {}, textContent: "", id: "", children: []};
+  let strings: string[] = []
   let addcontent = (c: Content) => {
     if (c instanceof Array) c.forEach(addcontent);
-    else if (typeof c == "string") dm.textContent = c;
+    else if (typeof c == "string") strings.push(c)
     else if (c instanceof Object) {
       if ("tag" in c) return dm.children.push(c as VDom)
       if ("id" in c) dm.id = c.id as string;
@@ -161,6 +173,7 @@ const mkDom = (tag: string) => (...content:Content[]) =>{
   }
 
   addcontent(content)
+  dm.textContent += strings.join(" ")
 
   return dm
 }
@@ -168,10 +181,7 @@ const mkDom = (tag: string) => (...content:Content[]) =>{
 let div= mkDom("div")
 let svg = mkDom("svg")
 let path = mkDom("path")
-let text = mkDom("text")
-
-
-
+let text = (attrs: Record<string, string> , ...content: string[]) => ({tag: "text", style: {}, attrs: attrs as {pos:string}, textContent: content.join(" "), id: "", children: []});
 
 const popup = (...cs:VDom[])=>{
 
@@ -234,10 +244,8 @@ export const HTML = {
     strokeWidth?: string
   } = {}, ...children: VDom[]) => {
     const paths = pathData instanceof Array ? pathData : [pathData]
-    const { viewBox = "0 0 24 24", width = "1em", height = "1em", fill = "currentColor", stroke, strokeWidth } = options
-    const pathAttrs: Record<string, string> = { fill }
-    if (stroke) pathAttrs.stroke = stroke
-    if (strokeWidth) pathAttrs["stroke-width"] = strokeWidth
+    const { viewBox = "0 0 100 100", width = "100", height = "100", fill = "none", stroke = "var(--color)", strokeWidth = "1" } = options
+    const pathAttrs: Record<string, string> = { fill, stroke, "stroke-width": strokeWidth }
     return svg(
       { attrs: { viewBox, width, height, xmlns: svgNamespace } },
       ...paths.map(d => path({ attrs: { ...pathAttrs, d } })),
@@ -260,19 +268,20 @@ export const HTML = {
       dy?: string
     } = {}
   ) => {
-    const attrs: Record<string, string> = {}
-    if (options.x) attrs.x = options.x
-    if (options.y) attrs.y = options.y
-    if (options.fill) attrs.fill = options.fill
+    const attrs: Record<string, string> = {
+      fill: options.fill ?? "var(--color)",
+      "font-size": options.fontSize ?? "12",
+      x: options.x ?? "50",
+      y: options.y ?? "50",
+      "text-anchor": options.textAnchor ?? "middle",
+      "dominant-baseline": options.dominantBaseline ?? "middle",
+    }
     if (options.background) attrs.background = options.background
-    if (options.fontSize) attrs["font-size"] = options.fontSize
     if (options.fontFamily) attrs["font-family"] = options.fontFamily
     if (options.fontWeight) attrs["font-weight"] = options.fontWeight
-    if (options.textAnchor) attrs["text-anchor"] = options.textAnchor
-    if (options.dominantBaseline) attrs["dominant-baseline"] = options.dominantBaseline
     if (options.dx) attrs.dx = options.dx
     if (options.dy) attrs.dy = options.dy
-    return text({ attrs }, content)
+    return text(attrs , content)
   },
   popup
 }

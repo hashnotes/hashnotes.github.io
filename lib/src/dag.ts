@@ -1,4 +1,4 @@
-import { type VDom, type UPPER, type MouseEvent } from "./views.ts"
+import { type VDom, type ViewContext, type MouseEvent } from "./views.ts"
 
 export type DagNode = { id: string, dom: VDom }
 
@@ -133,7 +133,7 @@ const VP_W = 200, VP_H = 110
 const MIN_VP_W = 70
 const MAX_VP_SCALE = 1.8
 
-type DagRender = { render: (upper: UPPER) => VDom, controls: DagControls }
+type DagRender = { render: (upper: ViewContext) => VDom, controls: DagControls }
 
 export const drawDag = (config: DagConfig): DagRender => {
   const { onClickBox, onHighlightBox } = config
@@ -151,7 +151,7 @@ export const drawDag = (config: DagConfig): DagRender => {
   let dragStartX = 0, dragStartY = 0, panStartX = 0, panStartY = 0
   let selected: string | null = null
   let externalHighlight: string | null = null
-  let upperRef: UPPER | null = null
+  let upperRef: ViewContext | null = null
   let rootRef: VDom | null = null
   let rebuildRef: (() => void) | null = null
 
@@ -258,7 +258,7 @@ export const drawDag = (config: DagConfig): DagRender => {
     },
   }
 
-  const render = (upper: UPPER) => {
+  const render = (upper: ViewContext) => {
     upperRef = upper
 
     const svg: VDom = {

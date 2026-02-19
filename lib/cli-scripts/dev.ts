@@ -9,7 +9,7 @@
  * 6. Serve /history as JSON for the client /live route
  */
 
-import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync, watch } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync, unlinkSync, existsSync, mkdirSync, watch } from "node:fs";
 import { resolve, basename } from "node:path";
 import { createServer } from "node:http";
 import { compileModule } from "../src/compile.ts";
@@ -280,6 +280,34 @@ const compile = async () => {
   writeHistory(history);
   currentHistory = history.slice(-10);
   console.log(`  history: ${currentHistory.length} entries`);
+
+  // --- GC: delete unreachable note files ---
+  const reachable = new Set<string>();
+  const walk = (hash: string) => {
+    if (reachable.has(hash)) return;
+    reachable.add(hash);
+    const src = sourcesByName.get(hash);
+    if (typeof src === "string") {
+      for (const m of src.matchAll(/from\s+["'](\.\/[^"']+|#[^"']+)["']/g)) {
+        const dep = normalizeDep(m[1].replace(/^\.\//, ""));
+        walk(dep);
+      }
+    }
+  };
+  for (const entry of history) { walk(entry.tsHash); walk(entry.jsHash); }
+  for (const h of tsHashByName.values()) walk(h);
+  for (const h of jsHashByName.values()) walk(h);
+  for (const h of jsonHashByName.values()) walk(h);
+
+  let gc = 0;
+  for (const file of readdirSync(NOTES_DIR)) {
+    const hash = file.replace(/\.(ts|js|json)$/, "");
+    if (!reachable.has(hash)) {
+      unlinkSync(resolve(NOTES_DIR, file));
+      gc++;
+    }
+  }
+  if (gc) console.log(`  gc: removed ${gc} unreachable note files`);
 
   return jsHashByName;
 };

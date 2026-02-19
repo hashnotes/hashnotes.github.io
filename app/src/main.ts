@@ -2,33 +2,7 @@ import { callViewClient, HTML, renderDom } from "@hashnotes/lib";
 import { isRef, tojson, type Ref } from "@hashnotes/core/notes";
 import { getNote, getServer } from "../../lib/src/db";
 
-const parseRefFromPath = (pathname: string): Ref | null => {
-  const segment = pathname.replace(/^\/+/, "").split("/")[0];
-  if (!segment) return null;
-
-  const decoded = decodeURIComponent(segment).trim();
-  if (!decoded) return null;
-
-  if (isRef(decoded)) return decoded;
-  if (/^[a-f0-9]{32}$/i.test(decoded)) return `#${decoded}`;
-  return null;
-};
-
 const DEV_URL = "http://localhost:4321";
-
-const renderRef = async (mount: HTMLElement, ref: Ref) => {
-  let note = await getNote(ref);
-  try {
-    const view = await callViewClient(ref);
-    const el = renderDom(view);
-    mount.innerHTML = "";
-    mount.append(el);
-  } catch (err) {
-    mount.innerHTML = "";
-    mount.append(renderDom(u => HTML.pre(`failed to render note: ${ref}\n${err}\n${tojson(note)}`)));
-  }
-};
-
 type HistoryEntry = { tsHash: string; jsHash: string; exportName: string; filename?: string };
 
 const el = (tag: string, text?: string): HTMLElement => {
@@ -37,147 +11,106 @@ const el = (tag: string, text?: string): HTMLElement => {
   return e;
 };
 
-const fetchHistory = async (): Promise<HistoryEntry[]> => {
-  const res = await fetch(`${DEV_URL}/history`);
-  return JSON.parse(await res.text());
+const parseRef = (pathname: string): Ref | null => {
+  const seg = decodeURIComponent(pathname.replace(/^\/+/, "").split("/")[0]).trim();
+  if (!seg) return null;
+  if (isRef(seg)) return seg;
+  if (/^[a-f0-9]{32}$/i.test(seg)) return `#${seg}`;
+  return null;
 };
 
-const latestView = (history: HistoryEntry[]): HistoryEntry | undefined =>
+const startPolling = (mount: HTMLElement, poll: () => Promise<void>) => {
+  mount.innerHTML = "";
+  mount.textContent = "Connecting to dev server...";
+  poll().then(() => setInterval(poll, 500));
+};
+
+const fetchHistory = async (): Promise<HistoryEntry[]> =>
+  JSON.parse(await (await fetch(`${DEV_URL}/history`)).text());
+
+const latestView = (history: HistoryEntry[]) =>
   [...history].reverse().find(e => e.exportName === "view" || e.exportName === "default");
 
-const showBlockedHint = (mount: HTMLElement) => {
-  const hint = el("p", "Can't reach dev server (localhost:4321). Is it running? (npm run dev --workspace lib) If it is, an ad blocker may be blocking the request.");
-  hint.style.cssText = "color:orange;font-size:0.85em;margin-top:1em;";
-  mount.append(hint);
+const renderRef = async (mount: HTMLElement, ref: Ref) => {
+  const note = await getNote(ref);
+  try {
+    const view = await callViewClient(ref);
+    mount.innerHTML = "";
+    mount.append(renderDom(view, { pathname: window.location.pathname }));
+  } catch (err) {
+    mount.innerHTML = "";
+    mount.append(renderDom(() => HTML.pre(`failed to render note: ${ref}\n${err}\n${tojson(note)}`), { pathname: "/" }));
+  }
 };
 
-const bootLive = async (mount: HTMLElement) => {
-  mount.innerHTML = "";
-  mount.textContent = "Connecting to dev server...";
+const bootLiveView = (mount: HTMLElement, path: string) => {
+  let last = "";
+  startPolling(mount, async () => {
+    const history = await fetchHistory();
+    const view = latestView(history);
+    if (!view) { mount.innerHTML = ""; mount.append(el("p", "No view found.")); return; }
+    if (view.jsHash === last) return;
+    last = view.jsHash;
 
-  let lastJson = "";
-  let fails = 0;
+    const bar = el("div");
+    bar.style.cssText = "padding:4px 8px;font-size:0.85em;opacity:0.6;";
+    const a = document.createElement("a");
+    a.href = `/${view.jsHash.slice(1)}`;
+    a.textContent = `${view.filename ?? view.exportName} → ${view.jsHash.slice(0, 14)}…`;
+    bar.append(a);
 
-  const poll = async () => {
-    try {
-      const res = await fetch(`${DEV_URL}/history`);
-      fails = 0;
-      const json = await res.text();
-      if (json === lastJson) return;
-      lastJson = json;
-
-      const history: HistoryEntry[] = JSON.parse(json);
-      mount.innerHTML = "";
-
-      mount.append(el("h2", "hashnotes dev"));
-      mount.append(el("p", `${history.length} compiled notes (${getServer()})`));
-
-      for (const entry of history) {
-        const row = el("div");
-        const isView = entry.exportName === "view" || entry.exportName === "default";
-
-        if (isView) {
-          const a = document.createElement("a");
-          a.href = `/${entry.jsHash.slice(1)}`;
-          a.textContent = entry.exportName
-          row.append(a);
-          const liveLink = document.createElement("a");
-          liveLink.href = "/live/view";
-          liveLink.textContent = " (live)";
-          liveLink.style.opacity = "0.5";
-          liveLink.style.fontSize = "0.85em";
-          row.append(liveLink);
-        } else {
-          const span = el("span", entry.exportName);
-          span.style.opacity = "0.5";
-          row.append(span);
-        }
-
-        const hash = el("span", ` ${entry.jsHash.slice(0, 14)}…`);
-        hash.style.opacity = "0.4";
-        hash.style.fontSize = "0.85em";
-        row.append(hash);
-
-        mount.append(row);
-      }
-    } catch {
-      if (++fails === 3 && !mount.querySelector("[data-blocked-hint]")) {
-        showBlockedHint(mount);
-        mount.lastElementChild?.setAttribute("data-blocked-hint", "1");
-      }
-    }
-  };
-
-  await poll();
-  setInterval(poll, 500);
+    const rendered = renderDom(await callViewClient(view.jsHash as Ref), { pathname: path.replace("/live/view", "") || "/" });
+    mount.innerHTML = "";
+    mount.append(bar, rendered);
+  });
 };
 
-const bootLiveView = async (mount: HTMLElement) => {
-  mount.innerHTML = "";
-  mount.textContent = "Connecting to dev server...";
+const bootLiveIndex = (mount: HTMLElement) => {
+  let last = "";
+  startPolling(mount, async () => {
+    const json = await (await fetch(`${DEV_URL}/history`)).text();
+    if (json === last) return;
+    last = json;
 
-  let lastJsHash = "";
+    const history: HistoryEntry[] = JSON.parse(json);
+    mount.innerHTML = "";
+    mount.append(el("h2", "hashnotes dev"));
+    mount.append(el("p", `${history.length} compiled notes (${getServer()})`));
 
-  const poll = async () => {
-    try {
-      const history = await fetchHistory();
-      const view = latestView(history);
-      if (!view) {
-        mount.innerHTML = "";
-        mount.append(el("p", "No view found in compiled notes."));
-        return;
+    for (const entry of history) {
+      const row = el("div");
+      const isView = entry.exportName === "view" || entry.exportName === "default";
+      if (isView) {
+        const a = document.createElement("a");
+        a.href = `/${entry.jsHash.slice(1)}`;
+        a.textContent = entry.exportName;
+        row.append(a);
+        const live = document.createElement("a");
+        live.href = "/live/view";
+        live.textContent = " (live)";
+        live.style.cssText = "opacity:0.5;font-size:0.85em;";
+        row.append(live);
+      } else {
+        const span = el("span", entry.exportName);
+        span.style.opacity = "0.5";
+        row.append(span);
       }
-
-      if (view.jsHash === lastJsHash) return;
-      lastJsHash = view.jsHash;
-
-      // Permanent link bar
-      const bar = el("div");
-      bar.style.cssText = "padding:4px 8px;font-size:0.85em;opacity:0.6;";
-      const permLink = document.createElement("a");
-      permLink.href = `/${view.jsHash.slice(1)}`;
-      permLink.textContent = `${view.filename ?? view.exportName} → ${view.jsHash.slice(0, 14)}…`;
-      bar.append(permLink);
-
-      // Render the view
-      const viewFn = await callViewClient(view.jsHash as Ref);
-      const rendered = renderDom(viewFn);
-
-      mount.innerHTML = "";
-      mount.append(bar);
-      mount.append(rendered);
-    } catch (err) {
-      if (lastJsHash === "" && !mount.querySelector("[data-blocked-hint]")) {
-        mount.innerHTML = "";
-        mount.textContent = "Connecting to dev server...";
-        showBlockedHint(mount);
-      }
+      const hash = el("span", ` ${entry.jsHash.slice(0, 14)}…`);
+      hash.style.cssText = "opacity:0.4;font-size:0.85em;";
+      row.append(hash);
+      mount.append(row);
     }
-  };
-
-  await poll();
-  setInterval(poll, 500);
+  });
 };
 
 export const boot = async () => {
   const mount = document.getElementById("app") ?? document.body;
-
   const path = window.location.pathname.replace(/\/+$/, "");
 
-  if (path === "/live/view") {
-    return bootLiveView(mount);
-  }
+  if (path.startsWith("/live/view")) return bootLiveView(mount, path);
+  if (path === "/live") return bootLiveIndex(mount);
 
-  if (path === "/live") {
-    return bootLive(mount);
-  }
-
-  const ref = parseRefFromPath(window.location.pathname);
-  if (!ref) {
-    mount.innerHTML = "";
-    mount.textContent = "Open /<note-hash> to render that note as a view.";
-    return;
-  }
-
+  const ref = parseRef(path);
+  if (!ref) { mount.textContent = "Open /<note-hash> to render that note as a view."; return; }
   await renderRef(mount, ref);
 };

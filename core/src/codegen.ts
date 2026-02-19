@@ -399,17 +399,27 @@ const renderRunnerWithFuelSharedAsync = (program: AstNode, fuelRefName = "__fuel
 
 export type runRes = { ok: unknown; fuel: number } | { err: string; fuel: number };
 
-const SAFE_OBJECT = (() => {
-  const safe = Object.create(null) as {
-    keys: (obj: unknown) => string[];
-    values: (obj: unknown) => unknown[];
-    entries: (obj: unknown) => [string, unknown][];
-  };
-  safe.keys = (obj: unknown) => Object.keys(obj as Record<string, unknown>);
-  safe.values = (obj: unknown) => Object.values(obj as Record<string, unknown>);
-  safe.entries = (obj: unknown) => Object.entries(obj as Record<string, unknown>);
-  return Object.freeze(safe);
-})();
+const SAFE_OBJECT = Object.freeze(Object.assign(Object.create(null), {
+  keys: (obj: unknown) => Object.keys(obj as Record<string, unknown>),
+  values: (obj: unknown) => Object.values(obj as Record<string, unknown>),
+  entries: (obj: unknown) => Object.entries(obj as Record<string, unknown>),
+  fromEntries: (entries: unknown) => Object.fromEntries(entries as Iterable<[string, unknown]>),
+  assign: (target: unknown, ...sources: unknown[]) => Object.assign(target as Record<string, unknown>, ...sources),
+  freeze: (obj: unknown) => Object.freeze(obj as Record<string, unknown>),
+}));
+
+const SAFE_ARRAY = Object.freeze(Object.assign(Object.create(null), {
+  isArray: (v: unknown) => Array.isArray(v),
+  from: (v: unknown, mapFn?: unknown) => mapFn ? Array.from(v as Iterable<unknown>, mapFn as (v: unknown, i: number) => unknown) : Array.from(v as Iterable<unknown>),
+  of: (...items: unknown[]) => Array.of(...items),
+}));
+
+const SAFE_MATH = Object.freeze(Object.assign(Object.create(null), {
+  abs: Math.abs, ceil: Math.ceil, floor: Math.floor, round: Math.round,
+  min: Math.min, max: Math.max, pow: Math.pow, sqrt: Math.sqrt,
+  sign: Math.sign, trunc: Math.trunc, log: Math.log, log2: Math.log2,
+  random: Math.random, PI: Math.PI, E: Math.E,
+}));
 
 type FuelRef = { value: number };
 type FunctionParam = { name: string, rest: boolean };
@@ -483,6 +493,8 @@ const withBuiltins = (
   const baseGlobals: Record<string, unknown> = {
     ...env,
     Object: SAFE_OBJECT,
+    Array: SAFE_ARRAY,
+    Math: SAFE_MATH,
     Promise,
   };
   return {
