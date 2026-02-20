@@ -1,5 +1,5 @@
-// ts-note: notes/#69623cfa0a13ab5f1992795f4b997f8a.ts
-// js-note: notes/#a249c382c8fe40385ba7f6ececcad85b.js
+// ts-note: notes/#291611fee40943f849186d67bd74b81d.ts
+// js-note: notes/#9f944e042ae52eed5221e669425eb7e6.js
 import type { Graph } from "./pipeline"
 
 type StoredGraphTrace = {
@@ -16,12 +16,24 @@ export type GraphTrace = {
 }
 
 const asStoredTrace = (x: Jsonable): StoredGraphTrace => {
-  if (!x || typeof x !== "object" || Array.isArray(x)) throw "invalid trace node payload"
+  if (!x || typeof x !== "object" || Array.isArray(x)) {
+    return {
+      graph: { $: "input" } as Graph,
+      inputs: [],
+      value: null,
+    }
+  }
   const rec = x as Record<string, Jsonable>
-  const graph = rec.graph as Graph
+  const graph = (rec.graph as Graph) || ({ $: "input" } as Graph)
   const inputs = rec.inputs as Jsonable
   const value = rec.value
-  if (!Array.isArray(inputs)) throw "invalid trace node inputs"
+  if (!Array.isArray(inputs)) {
+    return {
+      graph,
+      inputs: [],
+      value,
+    }
+  }
   return {
     graph,
     inputs: inputs as Ref[],
@@ -31,7 +43,7 @@ const asStoredTrace = (x: Jsonable): StoredGraphTrace => {
 
 export const loadTrace = async (root: Ref): Promise<GraphTrace> => {
   const cache = new Map<Ref, GraphTrace>()
-  const go = async (ref: Ref): Promise<GraphTrace> => {
+  async function go(ref: Ref): Promise<GraphTrace> {
     if (cache.has(ref)) return cache.get(ref) as GraphTrace
     const raw = await getNote(ref)
     const node = asStoredTrace(raw)

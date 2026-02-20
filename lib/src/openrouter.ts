@@ -38,9 +38,10 @@ export const openRouterRequest = async (
   req: OpenRouterRequest,
 ): Promise<Jsonable> => {
   if (!req.apiKey) throw new Error("openRouterRequest: apiKey is required");
-  if (!req.model) throw new Error("openRouterRequest: model is required");
+  if (!req.model) req.model = "openai/gpt-oss-20b"
   if (!req.prompt) throw new Error("openRouterRequest: prompt is required");
-  if (!req.schema || typeof req.schema !== "object" || Array.isArray(req.schema)) {
+  if (!req.schema) req.schema = {type:"string"}
+  if (typeof req.schema !== "object" || Array.isArray(req.schema)) {
     throw new Error("openRouterRequest: schema must be an object");
   }
 
@@ -54,6 +55,10 @@ export const openRouterRequest = async (
     body: JSON.stringify({
       model: req.model,
       messages,
+      reasoning:{
+        enabled:true,
+        exclude: true,
+      },
       response_format: {
         type: "json_schema",
         json_schema: {
@@ -72,8 +77,10 @@ export const openRouterRequest = async (
     throw new Error("OpenRouter response missing choices[0].message.content");
   }
   try {
+
     return JSON.parse(content) as Jsonable;
   } catch {
+    console.log(content)
     throw new Error("OpenRouter response content was not valid JSON");
   }
 };

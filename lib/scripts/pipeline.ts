@@ -1,17 +1,9 @@
-// ts-note: notes/#a782af823fd33aacde46fbd74c0ee269.ts
-// js-note: notes/#e17bce2eb689c9334e17c873520c9864.js
+// ts-note: notes/#860173f044321f57d299f509f15e1d8c.ts
+// js-note: notes/#44d9e8819532bdc591e26141bf47daec.js
 
+import type { JsonSchema } from "./jsonSchema";
 
-
-// export type Graph = {
-
-//   $:string,
-//   srcs: Graph[],
-//   code: string
-
-// }
-
-type Schema = Jsonable;
+export type LogicInputs = {[key: string]: Graph}
 
 export type Graph = {
   $: "input",
@@ -24,13 +16,26 @@ export type Graph = {
   input: Graph,
   condition: Graph,
   body: Graph,
+} | {
+  $: "LLMCall",
+  prompt: Graph,
+  model: string,
+  schema: JsonSchema
 }
 
-
-
-// export const  graph = (tag: string, srcs: Graph[] = [], code: string =""):Graph=>{
-//   return { $:tag, srcs, code }
-// }
-
-
-
+export function mkGraph() {
+  return {
+    input: (): Graph => {
+      return { $: "input" }
+    },
+    logic: (inputs: LogicInputs, code: string): Graph => {
+      return { $: "logic", inputs, code }
+    },
+    loop: (input: Graph, condition: Graph, body: Graph): Graph => {
+      return { $: "loop", input, condition, body }
+    },
+    llmCall: (prompt: Graph, model: string, schema: JsonSchema): Graph => {
+      return { $: "LLMCall", prompt, model, schema }
+    },
+  }
+}

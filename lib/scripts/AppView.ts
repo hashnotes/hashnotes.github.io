@@ -1,36 +1,40 @@
-// ts-note: notes/#17e7cb8403b50528fc8e10da37fbb6f1.ts
-// js-note: notes/#4f8256cfc3668b3582f5c0c3723cc3f0.js
+// ts-note: notes/#28b4de3cd86227cc41bc4239a8a9d297.ts
+// js-note: notes/#769aa117e948f10b317748a9d00844fe.js
 
 import { graphView } from "./graphView.ts";
-import type { Graph } from "./pipeline.ts";
-import type { GraphTrace } from "./loadTrace.ts";
+import { mkGraph, type Graph } from "./pipeline.ts";
+import type { GraphTrace } from "./runPipeline.ts";
 
 export const view: View = (ctx) => {
-
-  console.log(await openRouterRequest())
-
   const previewPaneW = 360
   const graphAreaW = Math.max(420, ctx.width - previewPaneW - 64)
   const graphAreaH = Math.max(280, Math.floor(ctx.height * 0.66))
 
-  let inp :Graph = {
-    $:"input",
-  }
 
-  let logic = (inputs: {[key:string]:Graph}, code:string):Graph=>({$:"logic", inputs, code})
 
-  let loop:Graph = {
-    $:"loop",
-    input: inp,
-    condition: logic({"x":inp}, "return x.length < 10"),
-    body: logic({x:inp}, "return x + 'A'"),
-  }
+  let { input, logic, llmCall, loop } = mkGraph();
+  let inp = input();
 
-  let bracks: Graph = {
-    $: "logic",
-    inputs: {x:loop},
-    code: "return '[' + x + ']'"
-  }
+  let llmcall = llmCall(
+    logic(
+      { data: input() },
+      "return 'Given this JSON array of animal names: ' + JSON.stringify(data) + '. Return one additional animal name not in the list as a plain string.'"
+    ),
+    "openai/gpt-oss-20b",
+    { type: "string" }
+  )
+
+  let graph = loop(
+    logic({}, "return ['cat', 'dog']"),
+    logic({ x: inp }, "return x.length < 6"),
+    logic({
+        ls: inp,
+        newanimal: llmcall
+      },
+      "return ls.concat([newanimal])"
+    )
+  )
+  
 
   let selected: Graph | null = null
   let selectedTrace: GraphTrace | null = null
@@ -43,6 +47,10 @@ export const view: View = (ctx) => {
         "",
         "code:",
         node.code,
+      ].join("\n")
+      : node.$ === "LLMCall" ? [
+        "type: LLMCall",
+        "model: " + node.model,
       ].join("\n")
         : [
           "type: loop",
@@ -110,7 +118,7 @@ export const view: View = (ctx) => {
             padding: "0.75em",
           }
         },
-        previewFor(selected ? selected : bracks)
+        previewFor(selected ? selected : graph)
       ),
     )
   }
@@ -142,7 +150,7 @@ export const view: View = (ctx) => {
       },
       HTML.div(
         { style: { flex: "1 1 auto", minWidth: "0" } },
-        graphView(bracks, graphAreaW, graphAreaH, ctx, {
+        graphView(graph, graphAreaW, graphAreaH, ctx, {
           onNodeClick: (node) => {
             selected = node
             selectedTrace = null
@@ -152,7 +160,8 @@ export const view: View = (ctx) => {
             selectedTrace = trace
             selected = null
             updatePreview()
-          }
+          },
+          "runInput": "test"
         }),
       ),
       HTML.div(

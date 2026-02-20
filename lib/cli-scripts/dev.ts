@@ -56,7 +56,7 @@ const writeHistory = (entries: HistoryEntry[]) => {
 const getExportName = (src: string): string => {
   const m1 = src.match(/export\s+const\s+(\w+)/);
   if (m1) return m1[1];
-  const m2 = src.match(/export\s+function\s+(\w+)/);
+  const m2 = src.match(/export\s+(?:async\s+)?function\s+(\w+)/);
   if (m2) return m2[1];
   if (/export\s+default/.test(src)) return "default";
   return "unknown";

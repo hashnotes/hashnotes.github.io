@@ -6,10 +6,10 @@
  *   2. Parse as ES module with acorn
  *   3. String-slice the JS source, replacing:
  *      - imports  → `const fn = getFuncSync("#hash")` or `getDataSync("#hash")`
- *      - export arrow  → inline body with `const [a, b, c] = args;`
+ *      - export function/arrow  → inline body with `const [a, b, c] = args;`
  *   4. Prepend `const __deps = [...]`
  *
- * Constraint: each file exports exactly one function.
+ * Constraint: each file exports exactly one function value.
  * All non-import/export code passes through verbatim.
  */
 
@@ -89,23 +89,25 @@ export const compileModule = (
     }
   }
 
-  // 4. Find the single export arrow
+  // 4. Find the single exported function
   let exportNode: N | null = null;
-  let exportArrow: N | null = null;
+  let exportFn: N | null = null;
 
   for (const node of nonImportNodes) {
     if (node.type === "ExportNamedDeclaration") {
-      const arrow = getExportedArrow(node);
-      if (!arrow) throw new Error("export must be a single arrow function");
-      if (exportArrow) throw new Error("only one export per module");
+      const fn = getExportedFunction(node);
+      if (!fn) throw new Error("export must be a single function (arrow or declaration)");
+      if (exportFn) throw new Error("only one export per module");
       exportNode = node;
-      exportArrow = arrow;
+      exportFn = fn;
     } else if (node.type === "ExportDefaultDeclaration") {
       const decl = node.declaration as N;
-      if (decl.type !== "ArrowFunctionExpression") throw new Error("export default must be an arrow function");
-      if (exportArrow) throw new Error("only one export per module");
+      if (decl.type !== "ArrowFunctionExpression" && decl.type !== "FunctionDeclaration") {
+        throw new Error("export default must be a function (arrow or declaration)");
+      }
+      if (exportFn) throw new Error("only one export per module");
       exportNode = node;
-      exportArrow = decl;
+      exportFn = decl;
     } else if (node.type === "ExportAllDeclaration") {
       throw new Error("export * from '...' is not supported");
     }
@@ -129,9 +131,9 @@ export const compileModule = (
     lines.push(jsSrc.slice(node.start, node.end));
   }
 
-  // 6. Inline the arrow function body
-  if (exportArrow) {
-    const params = exportArrow.params as N[];
+  // 6. Inline the exported function body
+  if (exportFn) {
+    const params = exportFn.params as N[];
     if (params.length === 1) {
       const p = jsSrc.slice(params[0].start, params[0].end);
       if (p !== "args") lines.push("const [" + p + "] = args;");
@@ -140,12 +142,12 @@ export const compileModule = (
       lines.push("const [" + ps.join(", ") + "] = args;");
     }
 
-    if (exportArrow.body.type === "BlockStatement") {
-      for (const s of exportArrow.body.body as N[]) {
+    if (exportFn.body.type === "BlockStatement") {
+      for (const s of exportFn.body.body as N[]) {
         lines.push(jsSrc.slice(s.start, s.end));
       }
     } else {
-      lines.push("return " + jsSrc.slice(exportArrow.body.start, exportArrow.body.end) + ";");
+      lines.push("return " + jsSrc.slice(exportFn.body.start, exportFn.body.end) + ";");
     }
   }
 
@@ -163,10 +165,14 @@ export const compileModule = (
 // Export helpers
 // ---------------------------------------------------------------------------
 
-/** Extract arrow function from `export const name = (...) => ...` */
-const getExportedArrow = (node: N): N | null => {
+/** Extract function from `export const name = (...) => ...` or `export function name(...)` */
+const getExportedFunction = (node: N): N | null => {
   const decl = node.declaration as N | null;
-  if (!decl || decl.type !== "VariableDeclaration") return null;
+  if (!decl) return null;
+
+  if (decl.type === "FunctionDeclaration") return decl;
+
+  if (decl.type !== "VariableDeclaration") return null;
   const inits = decl.declarations as N[];
   if (inits.length !== 1 || !inits[0].init) return null;
   const init = inits[0].init as N;

@@ -1,23 +1,9 @@
-// ts-note: notes/#b42ace5109b2223b4ae60a08c165386e.ts
-// js-note: notes/#46c4766b7a143fc931c78f5e245b74a0.js
+// ts-note: notes/#c647276b986143b5733003f90b7e3534.ts
+// js-note: notes/#b2adb31563654ebaddefb7264d15b8e7.js
 
 import { runPipeline } from "./runPipeline"
-import { loadTrace } from "./loadTrace"
-import type { GraphTrace } from "./loadTrace"
-
-
-type Graph = {
-  $: "input",
-} | {
-  $: "logic",
-  inputs: {[key: string]: Graph},
-  code: string
-} | {
-  $: "loop",
-  input: Graph,
-  condition: Graph,
-  body: Graph,
-}
+import type { GraphTrace } from "./runPipeline"
+import type { Graph } from "./pipeline"
 
 import { drawGraph } from "./drawGraph"
 import type { DAG, DrawGraphResult } from "./drawGraph"
@@ -52,6 +38,47 @@ export const graphView = (
   const short = (x: Jsonable, n = 20): string => {
     const s = formatValue(x)
     return s.length <= n ? s : s.slice(0, n - 1) + "…"
+  }
+
+  type StoredGraphTrace = {
+    graph: Graph
+    inputs: Ref[]
+    value: Jsonable
+  }
+
+  const storeTrace = async (trace: GraphTrace): Promise<Ref> => {
+    const inputRefs = await Promise.all(trace.inputs.map(storeTrace))
+    const rec: StoredGraphTrace = {
+      graph: trace.graph,
+      inputs: inputRefs,
+      value: trace.value,
+    }
+    return await addNote(rec as unknown as Jsonable)
+  }
+
+  const asStoredTrace = (x: Jsonable): StoredGraphTrace => {
+    if (!x || typeof x !== "object" || Array.isArray(x)) {
+      return { graph: { $: "input" }, inputs: [], value: null }
+    }
+    const rec = x as Record<string, Jsonable>
+    const g = (rec.graph as Graph) || ({ $: "input" } as Graph)
+    const ins = rec.inputs
+    if (!Array.isArray(ins)) return { graph: g, inputs: [], value: rec.value }
+    return { graph: g, inputs: ins as Ref[], value: rec.value }
+  }
+
+  const loadTraceByRef = async (rootRef: Ref): Promise<GraphTrace> => {
+    const cache = new Map<Ref, GraphTrace>()
+    const go = async (ref: Ref): Promise<GraphTrace> => {
+      if (cache.has(ref)) return cache.get(ref) as GraphTrace
+      const raw = await getNote(ref)
+      const n = asStoredTrace(raw)
+      const out: GraphTrace = { ref, graph: n.graph, inputs: [], value: n.value }
+      cache.set(ref, out)
+      out.inputs = await Promise.all(n.inputs.map(go))
+      return out
+    }
+    return await go(rootRef)
   }
 
   const traceDag = (trace: GraphTrace): DAG => {
@@ -102,6 +129,7 @@ export const graphView = (
     memoByHash.set(hashData(g as unknown as Jsonable), node)
     node.srcs = (g.$ == "input" ? []
       : g.$ == "logic" ? Object.values(g.inputs)
+      : g.$ == "LLMCall" ? [g.prompt]
       : [g.input, g.body, g.condition]).map(todag)
     return node
   }
@@ -121,8 +149,9 @@ export const graphView = (
             root.children = render().children
             ctx.update(root)
             try {
-              const ref = await runPipeline(graph, runInput)
-              const trace = await loadTrace(ref)
+              const traceRaw = await runPipeline(graph, runInput)
+              const ref = await storeTrace(traceRaw)
+              const trace = await loadTraceByRef(ref)
               lastTrace = trace
               lastRef = ref
               status = "saved: " + ref

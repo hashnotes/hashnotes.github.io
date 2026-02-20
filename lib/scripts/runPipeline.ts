@@ -1,95 +1,75 @@
-// ts-note: notes/#d58f86ac36dac75fb554e4859d7d641c.ts
-// js-note: notes/#d1cad27543049153266262071299dca0.js
-
-
+// ts-note: notes/#985153bc752b30bcd2deaf291cd2f68b.ts
+// js-note: notes/#82e9d463c232cb1753d210deb3baa1da.js
 import type { Graph } from "./pipeline"
+import { openRouterLocal } from "./openRouterLocal"
 
-type StoredGraphTrace = {
+export type GraphTrace = {
+  ref?: Ref
   graph: Graph
-  inputs: Ref[]
+  inputs: GraphTrace[]
   value: Jsonable
 }
 
-
-type TraceState = {
-  ref: Ref
-  value: Jsonable
+const toPrompt = (x: Jsonable): string => {
+  if (typeof x === "string") return x
+  if (typeof x === "number" || typeof x === "boolean" || x === null) return "" + x
+  return JSON.stringify(x)
 }
 
-export const runPipeline = async (graph: Graph, input:Jsonable) :Promise<Ref> => {
+export const runPipeline = async (graph: Graph, input: Jsonable): Promise<GraphTrace> => {
   const evalLogic = (inputs: {[key: string]: Jsonable}, code: string): Jsonable => {
-    if (code.indexOf("return") < 0) {
-      throw "logic code must return a value explicitly (use `return ...`)"
-    }
+    if (code.indexOf("return") < 0) return null
     const keys = Object.keys(inputs)
     const vals = Object.values(inputs)
-    const res = Function(...keys, code)(...vals) as Jsonable
-    return res
+    return Function(...keys, code)(...vals) as Jsonable
   }
 
-  const saveTraceNode = async (node: Omit<StoredGraphTrace, never>): Promise<Ref> => {
-    return await addNote(node as unknown as Jsonable)
-  }
-
-  const evalGraph = (g: Graph, i: Jsonable): Jsonable => {
-    switch (g.$) {
-      case "input":
-        return i
-      case "logic": {
-        const keys = Object.keys(g.inputs)
-        const vals = keys.map((k) => evalGraph(g.inputs[k], i))
-        const map = Object.fromEntries(keys.map((k, idx) => [k, vals[idx]])) as {[key:string]: Jsonable}
-        return evalLogic(map, g.code)
-      }
-      case "loop": {
-        let cur = evalGraph(g.input, i)
-        while (evalGraph(g.condition, cur)) {
-          cur = evalGraph(g.body, cur)
-        }
-        return cur
-      }
+  const evalGraph = async (g: Graph, i: Jsonable): Promise<Jsonable> => {
+    if (g.$ === "input") return i
+    if (g.$ === "logic") {
+      const keys = Object.keys(g.inputs)
+      const vals = await Promise.all(keys.map((k) => evalGraph(g.inputs[k], i)))
+      const map = Object.fromEntries(keys.map((k, idx) => [k, vals[idx]])) as {[key: string]: Jsonable}
+      return evalLogic(map, g.code)
     }
-  }
-
-  const go = async (g: Graph, i: Jsonable):Promise<TraceState> => {
-    switch (g.$) {
-      case "input": {
-        const value = i
-        const ref = await saveTraceNode({
-          graph: g,
-          inputs: [],
-          value,
-        })
-        return { ref, value }
-      }
-      case "logic": {
-        const inputStates = await Promise.all(Object.values(g.inputs).map((x) => go(x, i)))
-        const values = inputStates.map((x) => x.value)
-        const map = Object.fromEntries(Object.keys(g.inputs).map((k, idx) => [k, values[idx]])) as {[key:string]: Jsonable}
-        const value = evalLogic(map, g.code)
-        const ref = await saveTraceNode({
-          graph: g,
-          inputs: inputStates.map((x) => x.ref),
-          value,
-        })
-        return { ref, value }
-      }
-      case "loop": {
-        const steps: TraceState[] = [await go(g.input, i)]
-        while (evalGraph(g.condition, steps[steps.length - 1].value)) {
-          steps.push(await go(g.body, steps[steps.length - 1].value))
-        }
-        const value = steps[steps.length - 1].value
-        const ref = await saveTraceNode({
-          graph: g,
-          inputs: steps.map((s) => s.ref),
-          value,
-        })
-        return { ref, value }
-      }
+    if (g.$ === "LLMCall") {
+      const promptValue = await evalGraph(g.prompt, i)
+      return await openRouterLocal({
+        model: g.model,
+        prompt: toPrompt(promptValue),
+        schema: g.schema,
+      })
     }
+    let cur = await evalGraph(g.input, i)
+    while (await evalGraph(g.condition, cur)) {
+      cur = await evalGraph(g.body, cur)
+    }
+    return cur
   }
 
-  const out = await go(graph, input)
-  return out.ref
+  const go = async (g: Graph, i: Jsonable): Promise<GraphTrace> => {
+    if (g.$ === "input") return { graph: g, inputs: [], value: i }
+    if (g.$ === "logic") {
+      const inputs = await Promise.all(Object.values(g.inputs).map((x) => go(x, i)))
+      const values = inputs.map((x) => x.value)
+      const map = Object.fromEntries(Object.keys(g.inputs).map((k, idx) => [k, values[idx]])) as {[key: string]: Jsonable}
+      return { graph: g, inputs, value: evalLogic(map, g.code) }
+    }
+    if (g.$ === "LLMCall") {
+      const promptTrace = await go(g.prompt, i)
+      const llmValue = await openRouterLocal({
+        model: g.model,
+        prompt: toPrompt(promptTrace.value),
+        schema: g.schema,
+      })
+      return { graph: g, inputs: [promptTrace], value: llmValue }
+    }
+    const steps: GraphTrace[] = [await go(g.input, i)]
+    while (await evalGraph(g.condition, steps[steps.length - 1].value)) {
+      steps.push(await go(g.body, steps[steps.length - 1].value))
+    }
+    return { graph: g, inputs: steps, value: steps[steps.length - 1].value }
+  }
+
+  return go(graph, input)
 }

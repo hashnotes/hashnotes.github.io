@@ -1,5 +1,5 @@
-// ts-note: notes/#52fcda47c7e6864fed8fb4787cf20d1c.ts
-// js-note: notes/#e7652bba1ad9dbb8c3beeefd156cc449.js
+// ts-note: notes/#6d5e7779d7d57e9d8ff9441a87b5f01e.ts
+// js-note: notes/#50e513529e880e2a435dace070ccbc8b.js
 type OpenRouterLocalRequest = {
   model: string
   prompt: string
@@ -20,7 +20,7 @@ const loadApiKey = (): string => {
 
 export const openRouterLocal = async (req: OpenRouterLocalRequest): Promise<Jsonable> => {
   const apiKey = loadApiKey()
-  return await openRouterRequest({
+  return openRouterRequest({
     apiKey,
     model: req.model,
     prompt: req.prompt,

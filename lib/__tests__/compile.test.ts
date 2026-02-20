@@ -44,6 +44,21 @@ describe("compileModule", () => {
     assert(out.includes("return x + 1;"), "should inline body: " + out);
   });
 
+  it("inlines named export function declaration body", () => {
+    const src = `export function add(a, b) { return a + b; }`;
+    const out = compileModule(src);
+    assert(out.includes("const [a, b] = args;"), "should destructure params: " + out);
+    assert(out.includes("return a + b;"), "should inline function body: " + out);
+    assert(!out.includes("export function"), "should remove export declaration: " + out);
+  });
+
+  it("inlines default export function declaration body", () => {
+    const src = `export default function (x) { return x * 2; }`;
+    const out = compileModule(src);
+    assert(out.includes("const [x] = args;"), "should bind param: " + out);
+    assert(out.includes("return x * 2;"), "should inline function body: " + out);
+  });
+
   it("throws on re-export (not an arrow)", () => {
     const src = `export { foo } from "#bbb";`;
     let threw = false;

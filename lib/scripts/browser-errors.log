@@ -1,28 +1,76 @@
 
-[2026-02-20T15:35:26.245Z] browser error
+[2026-02-20T18:22:54.091Z] browser error
 page: /live/view
 source: window.unhandledrejection
-message: Error: SyntaxError: Unexpected identifier 'go'
-    at new Function (<anonymous>)
-    at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12)
-    at fn2 (http://localhost:5173/assets/app.js:6907:22)
-    at Object.onclick (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:3646)
-    at HTMLButtonElement.<anonymous> (http://localhost:5173/assets/app.js:32:48)
-Error: SyntaxError: Unexpected identifier 'go'
-    at new Function (<anonymous>)
-    at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12)
-    at fn2 (http://localhost:5173/assets/app.js:6907:22)
-    at Object.onclick (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:3646)
-    at HTMLButtonElement.<anonymous> (http://localhost:5173/assets/app.js:32:48)
-    at fn2 (http://localhost:5173/assets/app.js:6908:34)
-    at Object.onclick (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:3646)
-    at HTMLButtonElement.<anonymous> (http://localhost:5173/assets/app.js:32:48)
-stack: Error: SyntaxError: Unexpected identifier 'go'
-    at new Function (<anonymous>)
-    at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12)
-    at fn2 (http://localhost:5173/assets/app.js:6907:22)
-    at Object.onclick (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:3646)
-    at HTMLButtonElement.<anonymous> (http://localhost:5173/assets/app.js:32:48)
-    at fn2 (http://localhost:5173/assets/app.js:6908:34)
-    at Object.onclick (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:3646)
-    at HTMLButtonElement.<anonymous> (http://localhost:5173/assets/app.js:32:48)
+message: Error: OpenRouter request failed: 400 Reasoning is mandatory for this endpoint and cannot be disabled.
+Error: OpenRouter request failed: 400 Reasoning is mandatory for this endpoint and cannot be disabled.
+    at openRouterRequest (http://localhost:5173/assets/app.js:6833:22)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:2422)
+    at async Promise.all (index 1)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:1954)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:2753)
+    at async Object.onclick (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:4727)
+stack: Error: OpenRouter request failed: 400 Reasoning is mandatory for this endpoint and cannot be disabled.
+    at openRouterRequest (http://localhost:5173/assets/app.js:6833:22)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:2422)
+    at async Promise.all (index 1)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:1954)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:2753)
+    at async Object.onclick (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:4727)
+
+[2026-02-20T18:23:15.231Z] browser error
+page: /live/view
+source: window.unhandledrejection
+message: Error: OpenRouter response content was not valid JSON
+Error: OpenRouter response content was not valid JSON
+    at openRouterRequest (http://localhost:5173/assets/app.js:6843:11)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:2422)
+    at async Promise.all (index 1)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:1954)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:2753)
+    at async Object.onclick (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:4727)
+stack: Error: OpenRouter response content was not valid JSON
+    at openRouterRequest (http://localhost:5173/assets/app.js:6843:11)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:2422)
+    at async Promise.all (index 1)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:1954)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:2753)
+    at async Object.onclick (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:4727)
+
+[2026-02-20T18:24:45.708Z] browser error
+page: /live/view
+source: window.unhandledrejection
+message: Error: OpenRouter response content was not valid JSON
+Error: OpenRouter response content was not valid JSON
+    at openRouterRequest (http://localhost:5173/assets/app.js:6843:11)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:2422)
+    at async Promise.all (index 1)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:1954)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:2753)
+    at async Object.onclick (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:4727)
+stack: Error: OpenRouter response content was not valid JSON
+    at openRouterRequest (http://localhost:5173/assets/app.js:6843:11)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:2422)
+    at async Promise.all (index 1)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:1954)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:2753)
+    at async Object.onclick (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:4727)
+
+[2026-02-20T18:25:31.384Z] browser error
+page: /live/view
+source: window.unhandledrejection
+message: TypeError: Failed to execute 'json' on 'Response': body stream already read
+TypeError: body stream already read
+    at openRouterRequest (http://localhost:5173/assets/app.js:6836:27)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:2422)
+    at async Promise.all (index 1)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:1954)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:2753)
+    at async Object.onclick (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:4727)
+stack: TypeError: body stream already read
+    at openRouterRequest (http://localhost:5173/assets/app.js:6836:27)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:2422)
+    at async Promise.all (index 1)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:1954)
+    at async go (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:2753)
+    at async Object.onclick (eval at runWithFuelShared (http://localhost:5173/assets/app.js:6767:12), <anonymous>:3:4727)
