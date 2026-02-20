@@ -32,19 +32,19 @@ This enables portable UI definitions where the view logic itself is addressable 
 ## Getting Started
 
 ```bash
-npm install
+bun install
 ```
 
 Run app dev server from root:
 
 ```bash
-npm run dev
+bun run dev
 ```
 
 Build app into root `docs/`:
 
 ```bash
-npm run build
+bun run build
 ```
 
 ## Validation
@@ -52,13 +52,13 @@ npm run build
 Run all checks:
 
 ```bash
-npm run check
+bun run check
 ```
 
 Run all tests:
 
 ```bash
-npm run test
+bun run test
 ```
 
 ## Playground
@@ -66,7 +66,7 @@ npm run test
 Playground scripts live in the lib workspace:
 
 ```bash
-npm run script:play --workspace lib
+(cd lib && bun run script:smoke)
 ```
 
 The playground includes helpers to publish a view note and open its URL in the browser.

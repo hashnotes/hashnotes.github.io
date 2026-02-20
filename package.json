@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "workspaces": ["core", "lib", "app"],
   "scripts": {
-    "check": "npm run check --workspace core && npm run check --workspace lib && npm run check --workspace app",
-    "test": "npm run test --workspace core && npm run test --workspace lib && npm run test:backend --workspace lib",
-    "dev": "npm run dev --workspace app --",
-    "build": "npm run build --workspace app -- && node -e \"require('node:fs').copyFileSync('docs/index.html','docs/404.html')\""
+    "check": "(cd core && bun run check) && (cd lib && bun run check) && (cd app && bun run check)",
+    "test": "(cd core && bun run test) && (cd lib && bun run test) && (cd lib && bun run test:backend)",
+    "dev": "(cd app && bun run dev)",
+    "build": "(cd app && bun run build) && cp docs/index.html docs/404.html"
   },
   "devDependencies": {
     "vite": "^6.0.0"

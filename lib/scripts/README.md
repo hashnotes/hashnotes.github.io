@@ -4,10 +4,10 @@
 
 ```
 # terminal 1: dev watcher + compiler
-npm run dev --workspace lib
+(cd lib && bun run dev)
 
 # terminal 2: vite dev server
-npm run dev
+bun run dev
 ```
 
 Open `http://localhost:5173/live` to see compiled notes. Click a view name to render it.
