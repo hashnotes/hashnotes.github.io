@@ -65,6 +65,7 @@ const getExportName = (src: string): string => {
 // --- current history for the server ---
 
 let currentHistory: HistoryEntry[] = [];
+let browserErrorReportTimer: ReturnType<typeof setTimeout> | null = null;
 
 const errText = (err: unknown): string => {
   if (err instanceof Error) return err.stack || `${err.name}: ${err.message}`;
@@ -81,6 +82,25 @@ const logDevScriptError = (source: string, err: unknown, details: Record<string,
   ].join("\n");
   appendFileSync(BROWSER_ERRORS_PATH, `${lines}\n`);
   console.error(lines);
+};
+
+const reportBrowserErrors = () => {
+  const content = existsSync(BROWSER_ERRORS_PATH) ? readFileSync(BROWSER_ERRORS_PATH, "utf-8").trim() : "";
+  if (!content) {
+    console.log("  browser errors (1s): none");
+    return;
+  }
+  const lines = content.split("\n");
+  const tail = lines.slice(-40).join("\n");
+  console.error("  browser errors (1s):");
+  console.error(tail);
+};
+
+const scheduleBrowserErrorReport = () => {
+  if (browserErrorReportTimer) clearTimeout(browserErrorReportTimer);
+  browserErrorReportTimer = setTimeout(() => {
+    reportBrowserErrors();
+  }, 1000);
 };
 
 // --- compilation ---
@@ -392,6 +412,7 @@ const run = async () => {
   } catch (err) {
     logDevScriptError("compile", err);
   }
+  scheduleBrowserErrorReport();
 };
 
 server.listen(LIVE_PORT, async () => {

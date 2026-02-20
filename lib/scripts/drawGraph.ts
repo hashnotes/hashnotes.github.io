@@ -1,5 +1,5 @@
-// ts-note: notes/#97309c6ee9d58f410340e565180db6c0.ts
-// js-note: notes/#ebc43d3fbb39d2a149a3503a8ba4d49e.js
+// ts-note: notes/#ab774f3d45f6a0e4d85e0359f70b4663.ts
+// js-note: notes/#c260c84a0a084c3dd1a46e7c46e1eb96.js
 export type DAG = {
   title: string,
   srcs: DAG[],
@@ -11,9 +11,21 @@ type Pos = { x: number, y: number }
 export type DrawGraphResult = {
   view: VDom
   highlight: (node: DAG | null) => void
+  getViewport: () => {
+    panX: number
+    panY: number
+    vpW: number
+    vpH: number
+  }
 }
 
-export const drawGraph = (graph: DAG, w: number, h: number, ctx: ViewContext): DrawGraphResult => {
+export const drawGraph = (
+  graph: DAG,
+  w: number,
+  h: number,
+  ctx: ViewContext,
+  initialViewport?: { panX: number, panY: number, vpW: number, vpH: number },
+): DrawGraphResult => {
   // collect all unique nodes and edges
   let allNodes: DAG[] = []
   let edges: [DAG, DAG][] = []
@@ -84,23 +96,27 @@ export const drawGraph = (graph: DAG, w: number, h: number, ctx: ViewContext): D
   let layerCount = layers.length
   let maxPerLayer = Math.max(1, ...layers.map(l => l.length))
 
-  // layout: assign positions
+  // layout world size: can exceed viewport, so pan/zoom has room.
   let padX = 40
   let padY = 30
-  let gapY = layerCount > 1 ? (h - padY * 2) / (layerCount - 1) : 0
+  let minGapX = 120
+  let minGapY = 90
+  let fullW = Math.max(w, padX * 2 + (maxPerLayer > 1 ? (maxPerLayer - 1) * minGapX : 0))
+  let fullH = Math.max(h, padY * 2 + (layerCount > 1 ? (layerCount - 1) * minGapY : 0))
+  let gapY = layerCount > 1 ? (fullH - padY * 2) / (layerCount - 1) : 0
   let pos = new Map<DAG, Pos>()
 
   layers.forEach((layer, lvl) => {
     let count = layer.length
-    let gapX = count > 1 ? (w - padX * 2) / (count - 1) : 0
+    let gapX = count > 1 ? (fullW - padX * 2) / (count - 1) : 0
     layer.forEach((node, i) => {
-      let x = count > 1 ? padX + i * gapX : w / 2
+      let x = count > 1 ? padX + i * gapX : fullW / 2
       let y = padY + lvl * gapY
       pos.set(node, { x, y })
     })
   })
 
-  let fontSize = Math.max(6, Math.min(14, Math.round(w / maxPerLayer / 8)))
+  let fontSize = Math.max(6, Math.min(14, Math.round(fullW / maxPerLayer / 8)))
   let offset = fontSize * 0.7
 
   // connected edges per node (index into edges array)
@@ -118,6 +134,42 @@ export const drawGraph = (graph: DAG, w: number, h: number, ctx: ViewContext): D
   // selection state
   let selected: DAG | null = null
   let root: VDom = HTML.div()
+  let vpW = initialViewport ? initialViewport.vpW : w
+  let vpH = initialViewport ? initialViewport.vpH : h
+  let minVpW = Math.max(120, Math.floor(w * 0.2))
+  let maxVpW = Math.max(w, Math.floor(fullW * 2))
+  let panX = initialViewport ? initialViewport.panX : (fullW - vpW) / 2
+  let panY = initialViewport ? initialViewport.panY : (fullH - vpH) / 2
+  let dragging = false
+  let dragMoved = false
+  let justDragged = false
+  let dragStartX = 0
+  let dragStartY = 0
+  let panStartX = 0
+  let panStartY = 0
+  let dragTarget: Element | null = null
+  let dragDoc: Document | null = null
+  let onDocMove: ((ev: globalThis.MouseEvent) => void) | null = null
+  let onDocUp: ((ev: globalThis.MouseEvent) => void) | null = null
+
+  let applyViewport = (el: Element | null) => {
+    if (!el || !el.setAttribute) return
+    el.setAttribute("viewBox", "" + panX + " " + panY + " " + vpW + " " + vpH)
+    let styleEl = el as unknown as { style?: { cursor?: string } }
+    if (styleEl.style) styleEl.style.cursor = dragging ? "grabbing" : "grab"
+  }
+
+  let clamp = () => {
+    let padPanX = vpW * 0.45
+    let padPanY = vpH * 0.25
+    let minX = Math.min((fullW - vpW) / 2 - padPanX, -padPanX)
+    let maxX = Math.max((fullW - vpW) / 2 + padPanX, fullW - vpW + padPanX)
+    let minY = Math.min((fullH - vpH) / 2 - padPanY, -padPanY)
+    let maxY = Math.max((fullH - vpH) / 2 + padPanY, fullH - vpH + padPanY)
+    panX = Math.max(minX, Math.min(panX, maxX))
+    panY = Math.max(minY, Math.min(panY, maxY))
+  }
+  clamp()
 
   let build = (): VDom => {
     let litEdges = new Set<number>()
@@ -153,6 +205,10 @@ export const drawGraph = (graph: DAG, w: number, h: number, ctx: ViewContext): D
           background: "var(--background)",
         })
         el.onclick = () => {
+          if (justDragged) {
+            justDragged = false
+            return
+          }
           selected = selected === node ? null : node
           if (node.onclick) node.onclick()
           let rebuilt = build()
@@ -167,8 +223,86 @@ export const drawGraph = (graph: DAG, w: number, h: number, ctx: ViewContext): D
     // normal edges + highlighted edges on top + node labels
     let svgRoot = HTML.svgPath(
       normalPaths,
-      { viewBox: "0 0 " + w + " " + h, width: "" + w, height: "" + h },
+      { viewBox: "" + panX + " " + panY + " " + vpW + " " + vpH, width: "" + w, height: "" + h },
     )
+    svgRoot.style.cursor = dragging ? "grabbing" : "grab"
+    svgRoot.style.userSelect = "none"
+    svgRoot.style.touchAction = "none"
+
+    let stopDragging = () => {
+      justDragged = dragging && dragMoved
+      dragging = false
+      dragMoved = false
+      if (dragDoc && onDocMove) dragDoc.removeEventListener("mousemove", onDocMove)
+      if (dragDoc && onDocUp) dragDoc.removeEventListener("mouseup", onDocUp)
+      dragDoc = null
+      onDocMove = null
+      onDocUp = null
+      dragTarget = null
+    }
+
+    svgRoot.onmousedown = (e: any) => {
+      if (e && e.clientX != null) {
+        dragging = true
+        dragMoved = false
+        dragStartX = e.clientX
+        dragStartY = e.clientY || 0
+        panStartX = panX
+        panStartY = panY
+        dragTarget = e.currentTarget || null
+        let doc = dragTarget && dragTarget.ownerDocument ? dragTarget.ownerDocument : null
+        dragDoc = doc
+        if (doc) {
+          onDocMove = (me: globalThis.MouseEvent) => {
+            if (!dragging || !dragTarget || me.clientX == null) return
+            let rect = dragTarget.getBoundingClientRect ? dragTarget.getBoundingClientRect() : null
+            if (!rect) return
+            let dx = me.clientX - dragStartX
+            let dy = (me.clientY || 0) - dragStartY
+            if (!dragMoved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return
+            dragMoved = true
+            panX = panStartX - dx * (vpW / rect.width)
+            panY = panStartY - dy * (vpH / rect.height)
+            clamp()
+            applyViewport(dragTarget)
+          }
+          onDocUp = () => {
+            stopDragging()
+            applyViewport(dragTarget)
+          }
+          doc.addEventListener("mousemove", onDocMove)
+          doc.addEventListener("mouseup", onDocUp)
+        }
+      }
+    }
+    svgRoot.onmousemove = (e: any) => {
+      // Drag move is handled via document-level listener to avoid losing drag outside SVG.
+      return
+    }
+    svgRoot.onmouseup = () => {
+      stopDragging()
+    }
+    svgRoot.onwheel = (e: any) => {
+      if (e && e.preventDefault) e.preventDefault()
+      let rect = e && e.currentTarget && e.currentTarget.getBoundingClientRect ? e.currentTarget.getBoundingClientRect() : null
+      if (!rect) return
+      let zoom = e && e.deltaY > 0 ? 1.1 : 0.9
+      let oldVpW = vpW
+      let oldVpH = vpH
+      let nextVpW = Math.max(minVpW, Math.min(maxVpW, oldVpW * zoom))
+      let aspect = w > 0 && h > 0 ? w / h : 1
+      let nextVpH = nextVpW / aspect
+      let px = e && e.clientX != null ? Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) : 0.5
+      let py = e && e.clientY != null ? Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height)) : 0.5
+      let worldX = panX + px * oldVpW
+      let worldY = panY + py * oldVpH
+      vpW = nextVpW
+      vpH = nextVpH
+      panX = worldX - px * vpW
+      panY = worldY - py * vpH
+      clamp()
+      applyViewport(e.currentTarget || null)
+    }
     // add highlighted edge paths
     litPaths.forEach(d => {
       svgRoot.children.push({
@@ -189,6 +323,8 @@ export const drawGraph = (graph: DAG, w: number, h: number, ctx: ViewContext): D
     ctx.update(root)
   }
 
+  const getViewport = () => ({ panX, panY, vpW, vpH })
+
   root = build()
-  return { view: root, highlight }
+  return { view: root, highlight, getViewport }
 }

@@ -1,5 +1,5 @@
-// ts-note: notes/#c647276b986143b5733003f90b7e3534.ts
-// js-note: notes/#b2adb31563654ebaddefb7264d15b8e7.js
+// ts-note: notes/#888015194700759ff172af57648c37dc.ts
+// js-note: notes/#8d805aebf0262a3d71b10b7970f14938.js
 
 import { runPipeline } from "./runPipeline"
 import type { GraphTrace } from "./runPipeline"
@@ -28,6 +28,8 @@ export const graphView = (
   let memo = new Map<Graph, DAG>()
   let memoByHash = new Map<Ref, DAG>()
   let sourceGraphCtl: DrawGraphResult | null = null
+  let expandedLoopKeys = new Set<string>()
+  let refreshView: () => void = () => {}
 
   const formatValue = (x: Jsonable): string => {
     if (typeof x === "string") return x
@@ -84,9 +86,12 @@ export const graphView = (
   const traceDag = (trace: GraphTrace): DAG => {
     if (trace.graph.$ === "loop") {
       const iters = Math.max(0, trace.inputs.length - 1)
-      const hasStart = trace.inputs.length > 0
-      const startTrace = hasStart ? trace.inputs[0] : null
-      const start = startTrace ? startTrace.value : null
+      const loopKey = trace.ref ?? hashData({
+        graph: trace.graph as unknown as Jsonable,
+        value: trace.value,
+        count: trace.inputs.length,
+      })
+      const expanded = expandedLoopKeys.has(loopKey)
       const clickTrace = (t: GraphTrace) => {
         if (sourceGraphCtl) {
           const srcNode = memoByHash.get(hashData(t.graph as unknown as Jsonable))
@@ -94,15 +99,24 @@ export const graphView = (
         }
         if (onTraceNodeClick) onTraceNodeClick(t)
       }
-      const node: DAG = {
-        title: "loop (" + iters + ") => " + short(trace.value),
-        srcs: [
-          hasStart && startTrace
-            ? { title: "start => " + short(start), srcs: [], onclick: () => clickTrace(startTrace) }
-            : { title: "start", srcs: [] },
-        ],
+      const toggleExpanded = () => {
+        if (expandedLoopKeys.has(loopKey)) expandedLoopKeys.delete(loopKey)
+        else expandedLoopKeys.add(loopKey)
+        refreshView()
       }
-      node.onclick = () => clickTrace(trace)
+      const iterNodes = trace.inputs.map((step, i) => ({
+        title: (i === 0 ? "start" : "iter " + i) + " => " + short(step.value),
+        srcs: [traceDag(step)],
+        onclick: () => clickTrace(step),
+      }))
+      const node: DAG = {
+        title: "loop (" + iters + ") " + (expanded ? "[-]" : "[+]") + " => " + short(trace.value),
+        srcs: expanded ? iterNodes : [],
+      }
+      node.onclick = () => {
+        clickTrace(trace)
+        toggleExpanded()
+      }
       return node
     }
     const node: DAG = {
@@ -229,6 +243,11 @@ export const graphView = (
         tracePane,
       ),
     )
+  }
+
+  refreshView = () => {
+    root.children = render().children
+    ctx.update(root)
   }
 
   root = render()

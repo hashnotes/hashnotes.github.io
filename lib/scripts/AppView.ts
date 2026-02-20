@@ -1,5 +1,5 @@
-// ts-note: notes/#28b4de3cd86227cc41bc4239a8a9d297.ts
-// js-note: notes/#769aa117e948f10b317748a9d00844fe.js
+// ts-note: notes/#f770eb754e395d72245bdbeb97b7ba4b.ts
+// js-note: notes/#163a88a134627195517b40660494bb1e.js
 
 import { graphView } from "./graphView.ts";
 import { mkGraph, type Graph } from "./pipeline.ts";
@@ -17,12 +17,28 @@ export const view: View = (ctx) => {
 
   let llmcall = llmCall(
     logic(
-      { data: input() },
-      "return 'Given this JSON array of animal names: ' + JSON.stringify(data) + '. Return one additional animal name not in the list as a plain string.'"
+      { data: inp },
+      "return 'Given this JSON array of animal names: ' + JSON.stringify(data) + '. Return JSON object: {\"animal\": \"<name>\"}.'"
     ),
-    "openai/gpt-oss-20b",
-    { type: "string" }
+    "openai/gpt-oss-120b",
+    {
+      type: "object",
+      properties: {
+        animal: { type: "string" }
+      },
+      required: ["animal"],
+      additionalProperties: false,
+    }
   )
+
+
+  // llmcall = logic(
+  //   {
+  //     x: input(),
+  //   },
+  //   "return 'cat'"
+  // )
+
 
   let graph = loop(
     logic({}, "return ['cat', 'dog']"),
@@ -31,7 +47,7 @@ export const view: View = (ctx) => {
         ls: inp,
         newanimal: llmcall
       },
-      "return ls.concat([newanimal])"
+      "return ls.concat([newanimal.animal])"
     )
   )
   
