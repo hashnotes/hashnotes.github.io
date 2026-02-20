@@ -1,8 +1,8 @@
-// ts-note: notes/#30a4a5a0440a301c8fdda84726cf9bab.ts
-// js-note: notes/#c96f4105213abd58062ed6f00bfb5275.js
+// ts-note: notes/#51f9ea102128c10ced6003b8f51a663f.ts
+// js-note: notes/#d130627d77e8b29bb6a823880b575078.js
 
 
-import { Graph } from "./pipeline"
+import type { Graph } from "./pipeline"
 
 export type GraphTrace = {
   graph: Graph
@@ -12,6 +12,15 @@ export type GraphTrace = {
 
 
 export const runPipeline = (graph: Graph, input:Jsonable) :GraphTrace => {
+  const evalLogic = (inputs: {[key: string]: Jsonable}, code: string): Jsonable => {
+    if (code.indexOf("return") < 0) {
+      throw "logic code must return a value explicitly (use `return ...`)"
+    }
+    const keys = Object.keys(inputs)
+    const vals = Object.values(inputs)
+    const res = Function(...keys, code)(...vals) as Jsonable
+    return res
+  }
 
   const go = (graph: Graph, input: Jsonable):GraphTrace => {
     switch (graph.$) {
@@ -23,7 +32,8 @@ export const runPipeline = (graph: Graph, input:Jsonable) :GraphTrace => {
       case "logic": {
         let inputs = Object.values(graph.inputs).map(x=>go(x, input))
         let values = inputs.map(x => x.value)
-        let res = Function(...Object.keys(graph.inputs), graph.code)(...values) as Jsonable
+        let map = Object.fromEntries(Object.keys(graph.inputs).map((k, i) => [k, values[i]])) as {[key:string]: Jsonable}
+        let res = evalLogic(map, graph.code)
         return {
           graph,
           inputs,
@@ -46,5 +56,3 @@ export const runPipeline = (graph: Graph, input:Jsonable) :GraphTrace => {
   }
   return go(graph, input)
 }
-
-

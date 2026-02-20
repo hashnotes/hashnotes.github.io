@@ -1,5 +1,5 @@
-// ts-note: notes/#710af7ed9a2e763976d761e6d39c1aa2.ts
-// js-note: notes/#41da62487a6cc1bb2817ffb81b49ddea.js
+// ts-note: notes/#97309c6ee9d58f410340e565180db6c0.ts
+// js-note: notes/#ebc43d3fbb39d2a149a3503a8ba4d49e.js
 export type DAG = {
   title: string,
   srcs: DAG[],
@@ -8,7 +8,12 @@ export type DAG = {
 
 type Pos = { x: number, y: number }
 
-export const drawGraph = (graph: DAG, w: number, h: number, ctx: ViewContext): VDom => {
+export type DrawGraphResult = {
+  view: VDom
+  highlight: (node: DAG | null) => void
+}
+
+export const drawGraph = (graph: DAG, w: number, h: number, ctx: ViewContext): DrawGraphResult => {
   // collect all unique nodes and edges
   let allNodes: DAG[] = []
   let edges: [DAG, DAG][] = []
@@ -177,6 +182,13 @@ export const drawGraph = (graph: DAG, w: number, h: number, ctx: ViewContext): V
     return svgRoot
   }
 
+  const highlight = (node: DAG | null) => {
+    selected = node
+    let rebuilt = build()
+    root.children = rebuilt.children
+    ctx.update(root)
+  }
+
   root = build()
-  return root
+  return { view: root, highlight }
 }

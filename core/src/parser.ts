@@ -55,6 +55,9 @@ export const validateScopes = (program: AstNode, allowedGlobals: string[] = []) 
       case "AwaitExpression":
         visitExpr(e.argument);
         return;
+      case "ChainExpression":
+        visitExpr(e.expression);
+        return;
       case "NewExpression":
         visitExpr(e.callee);
         (e.arguments as AstNode[]).forEach((a) => visitExpr(a));
@@ -120,6 +123,9 @@ export const validateScopes = (program: AstNode, allowedGlobals: string[] = []) 
       case "ReturnStatement":
         if (s.argument) visitExpr(s.argument);
         return;
+      case "ThrowStatement":
+        if (s.argument) visitExpr(s.argument);
+        return;
       case "VariableDeclaration":
         (s.declarations as AstNode[]).forEach(visitVarDecl);
         return;
@@ -147,6 +153,26 @@ export const validateScopes = (program: AstNode, allowedGlobals: string[] = []) 
         exit();
         return;
       }
+      case "SwitchStatement": {
+        visitExpr(s.discriminant);
+        enter();
+        (s.cases as AstNode[]).forEach((c) => {
+          if (c.test) visitExpr(c.test);
+          (c.consequent as AstNode[]).forEach(visitStmt);
+        });
+        exit();
+        return;
+      }
+      case "TryStatement":
+        visitStmt(s.block);
+        if (s.handler) {
+          enter();
+          if (s.handler.param) declarePattern(s.handler.param);
+          visitStmt(s.handler.body);
+          exit();
+        }
+        if (s.finalizer) visitStmt(s.finalizer);
+        return;
       case "BreakStatement":
       case "ContinueStatement":
         return;
@@ -189,6 +215,9 @@ export const validateNoPrototype = (program: AstNode) => {
         return;
       case "AwaitExpression":
         visitExpr(e.argument);
+        return;
+      case "ChainExpression":
+        visitExpr(e.expression);
         return;
       case "ArrayExpression":
         (e.elements as AstNode[]).forEach((el) => el && visitExpr(el));
@@ -245,6 +274,9 @@ export const validateNoPrototype = (program: AstNode) => {
       case "ReturnStatement":
         if (s.argument) visitExpr(s.argument);
         return;
+      case "ThrowStatement":
+        if (s.argument) visitExpr(s.argument);
+        return;
       case "VariableDeclaration":
         (s.declarations as AstNode[]).forEach((d) => d.init && visitExpr(d.init));
         return;
@@ -265,6 +297,18 @@ export const validateNoPrototype = (program: AstNode) => {
         else visitExpr(s.left);
         visitExpr(s.right);
         visitStmt(s.body);
+        return;
+      case "SwitchStatement":
+        visitExpr(s.discriminant);
+        (s.cases as AstNode[]).forEach((c) => {
+          if (c.test) visitExpr(c.test);
+          (c.consequent as AstNode[]).forEach(visitStmt);
+        });
+        return;
+      case "TryStatement":
+        visitStmt(s.block);
+        if (s.handler) visitStmt(s.handler.body);
+        if (s.finalizer) visitStmt(s.finalizer);
         return;
       case "BreakStatement":
       case "ContinueStatement":

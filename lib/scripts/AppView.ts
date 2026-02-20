@@ -1,12 +1,14 @@
-// ts-note: notes/#55f7a2fd04dad64bf33bf0c717443b00.ts
-// js-note: notes/#6e3fce0b306aa9a1646310301efa40b0.js
+// ts-note: notes/#0dd3c52422c8c9001e0e18694d269a5f.ts
+// js-note: notes/#b5911ce87205ab09176b627a15be53f4.js
+
 import { graphView } from "./graphView.ts";
-import { Graph } from "./pipeline.ts";
+import type { Graph } from "./pipeline.ts";
+import type { GraphTrace } from "./runPipeline.ts";
 
 export const view: View = (ctx) => {
-
-  let w = ctx.width * 0.9
-  let h = ctx.height * 0.7
+  const previewPaneW = 360
+  const graphAreaW = Math.max(420, ctx.width - previewPaneW - 64)
+  const graphAreaH = Math.max(280, Math.floor(ctx.height * 0.66))
 
   let inp :Graph = {
     $:"input",
@@ -17,11 +19,18 @@ export const view: View = (ctx) => {
   let loop:Graph = {
     $:"loop",
     input: inp,
-    condition: logic({"x":inp}, "x.length > 10"),
-    body: logic({x:inp}, "x += 'A'"),
+    condition: logic({"x":inp}, "return x.length < 10"),
+    body: logic({x:inp}, "return x + 'A'"),
+  }
+
+  let bracks: Graph = {
+    $: "logic",
+    inputs: {x:loop},
+    code: "return '[' + x + ']'"
   }
 
   let selected: Graph | null = null
+  let selectedTrace: GraphTrace | null = null
 
   const previewFor = (node: Graph): string =>
     node.$ === "input" ? "type: input"
@@ -37,26 +46,68 @@ export const view: View = (ctx) => {
           "fields: input, condition, body",
         ].join("\n")
 
+  const previewForTrace = (trace: GraphTrace): string =>
+    (trace.graph.$ === "loop"
+      ? [
+          "type: loop",
+          "value: " + (typeof trace.value === "string" ? trace.value : JSON.stringify(trace.value)),
+          "iterations: " + Math.max(0, trace.inputs.length - 1),
+          "",
+          "steps:",
+          ...trace.inputs.map((step, i) =>
+            (i === 0 ? "start: " : "iter " + i + ": ")
+            + (typeof step.value === "string" ? step.value : JSON.stringify(step.value))
+          ),
+        ]
+      : [
+      "type: " + trace.graph.$,
+      "value: " + (typeof trace.value === "string" ? trace.value : JSON.stringify(trace.value)),
+      "inputs: " + trace.inputs.length,
+      ...(trace.graph.$ === "logic" ? ["", "code:", trace.graph.code] : []),
+    ]).join("\n")
+
   const buildPreview = (): VDom => {
-    if (!selected) {
+    if (!selected && !selectedTrace) {
       return HTML.div(
         HTML.p({ style: { opacity: "0.7", margin: "0" } }, "Click a node to preview its content."),
       )
     }
+    if (selectedTrace) {
+      return HTML.div(
+        HTML.p({ style: { margin: "0 0 0.5em 0" } }, "trace node: " + selectedTrace.graph.$),
+        HTML.pre(
+          {
+            style: {
+              margin: "0",
+              whiteSpace: "pre-wrap",
+              overflowWrap: "anywhere",
+              overflowY: "auto",
+              maxHeight: "28em",
+              background: "var(--background)",
+              border: "1px solid var(--color)",
+              padding: "0.75em",
+            }
+          },
+          previewForTrace(selectedTrace)
+        ),
+      )
+    }
     return HTML.div(
-      HTML.p({ style: { margin: "0 0 0.5em 0" } }, "node: " + selected.$),
+      HTML.p({ style: { margin: "0 0 0.5em 0" } }, "node: " + (selected ? selected.$ : "")),
       HTML.pre(
         {
           style: {
             margin: "0",
             whiteSpace: "pre-wrap",
             overflowWrap: "anywhere",
-            background: "var(--background-color)",
+            overflowY: "auto",
+            maxHeight: "28em",
+            background: "var(--background)",
             border: "1px solid var(--color)",
             padding: "0.75em",
           }
         },
-        previewFor(selected)
+        previewFor(selected ? selected : bracks)
       ),
     )
   }
@@ -79,16 +130,24 @@ export const view: View = (ctx) => {
     HTML.div(
       {
         style: {
-          display: "flex",
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr) " + previewPaneW + "px",
           gap: "1em",
           alignItems: "flex-start",
+          width: "100%",
         }
       },
       HTML.div(
         { style: { flex: "1 1 auto", minWidth: "0" } },
-        graphView(loop, w, h, ctx, {
+        graphView(bracks, graphAreaW, graphAreaH, ctx, {
           onNodeClick: (node) => {
             selected = node
+            selectedTrace = null
+            updatePreview()
+          },
+          onTraceNodeClick: (trace) => {
+            selectedTrace = trace
+            selected = null
             updatePreview()
           }
         }),
@@ -96,11 +155,11 @@ export const view: View = (ctx) => {
       HTML.div(
         {
           style: {
-            flex: "0 0 22em",
-            maxWidth: "45%",
+            width: previewPaneW + "px",
             background: "var(--background)",
             border: "1px solid var(--color)",
             padding: "0.75em",
+            boxSizing: "border-box",
           }
         },
         HTML.h4({ style: { margin: "0 0 0.75em 0", background: "var(--background)" } }, "node preview"),

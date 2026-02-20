@@ -142,6 +142,15 @@ it("objects", () => {
   testRun("return Object.entries({a: 1, b: 2})", {result: [["a", 1], ["b", 2]]})
 })
 
+it("chain expressions and null tests", () => {
+  testRun("let o = {a: {b: 3}}; return o?.a?.b", {result: 3})
+  testRun("let o = null; return o?.a?.b == null ? 1 : 0", {result: 1})
+  testRun("let o = {f: (x) => x + 1}; return o?.f?.(3)", {result: 4})
+  testRun("let o = null; return (o?.f?.(3) ?? 9)", {result: 9})
+  testRun("let x = null; return x == null ? 'n' : 'v'", {result: "n"})
+  testRun("let x = 1; return x != null ? 'v' : 'n'", {result: "v"})
+})
+
 it("method calls", () => {
   testRun('return "hello".toUpperCase()', {result: "HELLO"})
   testRun('return "a,b,c".split(",")', {result: ["a", "b", "c"]})
@@ -322,9 +331,14 @@ it("security: 'function' declaration is a parse error", () => {
   assert("err" in res, "'function' declaration should cause a parse error")
 })
 
-it("security: try/catch/throw are parse errors", () => {
-  assert("err" in runWithFuel("try { return 1 } catch(e) {}", 100), "try/catch should error")
-  assert("err" in runWithFuel("throw 'error'", 100), "throw should error")
+it("supports try/catch/finally and throw", () => {
+  testRun("try { throw 'x' } catch (e) { return e }", { result: "x" })
+  testRun("let x = 0; try { x = 1 } finally { x = x + 1 } return x", { result: 2 })
+})
+
+it("supports switch statements", () => {
+  testRun("let x = 2; switch (x) { case 1: return 'a'; case 2: return 'b'; default: return 'z'; }", { result: "b" })
+  testRun("let x = 3; switch (x) { case 1: return 'a'; default: return 'z'; }", { result: "z" })
 })
 
 it("security: template literals / backticks rejected by tokenizer", () => {

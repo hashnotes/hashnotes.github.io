@@ -52,6 +52,8 @@ const renderExpr = (e: AstNode): string => {
     case "Identifier":
       assertSafeIdent(e.name);
       return e.name;
+    case "ChainExpression":
+      return renderExpr(e.expression);
     case "SpreadElement":
       return `...${renderExpr(e.argument)}`;
     case "Literal":
@@ -65,12 +67,12 @@ const renderExpr = (e: AstNode): string => {
     case "CallExpression": {
       const calleeStr = renderExpr(e.callee);
       const needsParens = e.callee.type === "ArrowFunctionExpression";
-      return `${needsParens ? "(" : ""}${calleeStr}${needsParens ? ")" : ""}(${(e.arguments as AstNode[]).map(renderExpr).join(", ")})`;
+      return `${needsParens ? "(" : ""}${calleeStr}${needsParens ? ")" : ""}${e.optional ? "?." : ""}(${(e.arguments as AstNode[]).map(renderExpr).join(", ")})`;
     }
     case "MemberExpression":
       return e.computed
-        ? `${renderExpr(e.object)}[__chk(${renderExpr(e.property)})]`
-        : `${renderExpr(e.object)}.${renderExpr(e.property)}`;
+        ? `${renderExpr(e.object)}${e.optional ? "?." : ""}[__chk(${renderExpr(e.property)})]`
+        : `${renderExpr(e.object)}${e.optional ? "?." : "."}${renderExpr(e.property)}`;
     case "AssignmentExpression":
       return `${renderExpr(e.left)} ${e.operator} ${renderExpr(e.right)}`;
     case "UpdateExpression":
@@ -143,6 +145,8 @@ const renderStmt = (s: AstNode, inFn = false): string => {
     }
     case "ReturnStatement":
       return `${burn}return${s.argument ? ` ${renderExpr(s.argument)}` : ""};`;
+    case "ThrowStatement":
+      return `${burn}throw ${renderExpr(s.argument)};`;
     case "VariableDeclaration":
       if (s.kind === "var") throw new Error("var declarations not allowed");
       return `${burn}${s.kind} ${(s.declarations as AstNode[]).map(renderDecl).join(", ")};`;
@@ -175,6 +179,26 @@ const renderStmt = (s: AstNode, inFn = false): string => {
         ? `${s.left.kind} ${(s.left.declarations as AstNode[]).map(renderDecl).join(", ")}`
         : renderExpr(s.left);
       return `${burn}for (${left} of ${renderExpr(s.right)}) ${renderLoopBody(s.body)}`;
+    }
+    case "SwitchStatement": {
+      const cases = (s.cases as AstNode[]).map((c) => {
+        const head = c.test ? `case ${renderExpr(c.test)}:` : "default:";
+        const body = (c.consequent as AstNode[]).map((stmt) => renderStmt(stmt, inFn)).join("");
+        return `${head}${body}`;
+      }).join("");
+      return `${burn}switch (${renderExpr(s.discriminant)}) {${cases}}`;
+    }
+    case "TryStatement": {
+      const block = renderStmt(s.block, inFn);
+      const handler = s.handler
+        ? (() => {
+            const param = s.handler.param ? renderPattern(s.handler.param) : "";
+            const body = renderStmt(s.handler.body, inFn);
+            return `catch${param ? ` (${param})` : ""} ${body}`;
+          })()
+        : "";
+      const finalizer = s.finalizer ? ` finally ${renderStmt(s.finalizer, inFn)}` : "";
+      return `${burn}try ${block}${handler}${finalizer}`;
     }
     case "EmptyStatement":
       return "";
@@ -284,6 +308,9 @@ const validateNoReservedRuntimeNames = (program: AstNode, reservedNames: string[
       case "AwaitExpression":
         visitExpr(e.argument);
         return;
+      case "ChainExpression":
+        visitExpr(e.expression);
+        return;
       case "NewExpression":
         visitExpr(e.callee);
         (e.arguments as AstNode[]).forEach((a) => visitExpr(a));
@@ -345,6 +372,9 @@ const validateNoReservedRuntimeNames = (program: AstNode, reservedNames: string[
       case "ReturnStatement":
         if (s.argument) visitExpr(s.argument);
         return;
+      case "ThrowStatement":
+        visitExpr(s.argument);
+        return;
       case "VariableDeclaration":
         (s.declarations as AstNode[]).forEach(visitVarDecl);
         return;
@@ -365,6 +395,21 @@ const validateNoReservedRuntimeNames = (program: AstNode, reservedNames: string[
         else visitExpr(s.left);
         visitExpr(s.right);
         visitStmt(s.body);
+        return;
+      case "SwitchStatement":
+        visitExpr(s.discriminant);
+        (s.cases as AstNode[]).forEach((c) => {
+          if (c.test) visitExpr(c.test);
+          (c.consequent as AstNode[]).forEach(visitStmt);
+        });
+        return;
+      case "TryStatement":
+        visitStmt(s.block);
+        if (s.handler) {
+          if (s.handler.param) visitPattern(s.handler.param);
+          visitStmt(s.handler.body);
+        }
+        if (s.finalizer) visitStmt(s.finalizer);
         return;
       case "BreakStatement":
       case "ContinueStatement":

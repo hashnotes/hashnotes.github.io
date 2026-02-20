@@ -1,0 +1,13 @@
+
+[2026-02-20T14:43:54.646Z] browser error
+page: /1a703f6fb039a997b847bf5740214960
+source: renderRef
+message: Error: view note must resolve to a string
+Error: view note must resolve to a string
+    at callViewClient (http://localhost:5173/assets/app.js:6825:41)
+    at async renderRef (http://localhost:5173/assets/app.js:6957:18)
+    at async boot (http://localhost:5173/assets/app.js:7057:3)
+stack: Error: view note must resolve to a string
+    at callViewClient (http://localhost:5173/assets/app.js:6825:41)
+    at async renderRef (http://localhost:5173/assets/app.js:6957:18)
+    at async boot (http://localhost:5173/assets/app.js:7057:3)

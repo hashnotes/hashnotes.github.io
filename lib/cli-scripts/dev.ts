@@ -9,7 +9,7 @@
  * 6. Serve /history as JSON for the client /live route
  */
 
-import { readFileSync, readdirSync, writeFileSync, unlinkSync, existsSync, mkdirSync, watch } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync, unlinkSync, existsSync, mkdirSync, watch, appendFileSync } from "node:fs";
 import { resolve, basename } from "node:path";
 import { createServer } from "node:http";
 import { compileModule } from "../src/compile.ts";
@@ -19,6 +19,7 @@ import { hashData, type Jsonable, type Ref } from "@hashnotes/core/notes";
 const SCRIPTS_DIR = resolve(import.meta.dirname!, "../scripts");
 const NOTES_DIR = resolve(SCRIPTS_DIR, "notes");
 const HISTORY_PATH = resolve(SCRIPTS_DIR, "history.json");
+const BROWSER_ERRORS_PATH = resolve(SCRIPTS_DIR, "browser-errors.log");
 const LIVE_PORT = 4321;
 
 type HistoryEntry = {
@@ -319,6 +320,40 @@ const server = createServer((req, res) => {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") { res.end(); return; }
 
+  if (req.url === "/browser-error" && req.method === "POST") {
+    let body = "";
+    req.on("data", (chunk) => { body += String(chunk); });
+    req.on("end", () => {
+      const at = new Date().toISOString();
+      try {
+        const payload = JSON.parse(body) as Record<string, unknown>;
+        const lines = [
+          `\n[${at}] browser error`,
+          `page: ${String(payload.page ?? "")}`,
+          `source: ${String(payload.source ?? "")}`,
+          `message: ${String(payload.message ?? "")}`,
+          payload.stack ? `stack: ${String(payload.stack)}` : "",
+        ].filter(Boolean).join("\n");
+        appendFileSync(BROWSER_ERRORS_PATH, lines + "\n");
+        console.error(lines);
+      } catch {
+        const line = `\n[${at}] browser error (raw)\n${body}\n`;
+        appendFileSync(BROWSER_ERRORS_PATH, line);
+        console.error(line);
+      }
+      res.statusCode = 204;
+      res.end();
+    });
+    return;
+  }
+
+  if (req.url === "/browser-errors") {
+    const content = existsSync(BROWSER_ERRORS_PATH) ? readFileSync(BROWSER_ERRORS_PATH, "utf-8") : "";
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.end(content);
+    return;
+  }
+
   if (req.url === "/history") {
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify(currentHistory));
@@ -333,6 +368,8 @@ const server = createServer((req, res) => {
 
 const run = async () => {
   console.log(`\n--- compiling scripts/ ---`);
+  writeFileSync(BROWSER_ERRORS_PATH, "");
+  console.log("  browser errors: cleared");
   try {
     await compile();
   } catch (err) {
