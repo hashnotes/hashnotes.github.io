@@ -7,8 +7,8 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "bun test __tests__/dag.test.ts __tests__/localstore.test.ts __tests__/compile.test.ts",
-    "test:backend": "bun test __tests__/backend.test.ts",
+    "test": "node --test --experimental-strip-types __tests__/dag.test.ts __tests__/localstore.test.ts __tests__/compile.test.ts",
+    "test:backend": "node --test --experimental-strip-types __tests__/backend.test.ts",
     "script": "bun",
     "script:smoke": "bun run cli-scripts/smoke.ts",
     "dev": "bun run cli-scripts/dev.ts",
