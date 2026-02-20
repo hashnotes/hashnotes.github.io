@@ -1,5 +1,5 @@
-// ts-note: notes/#e93078060de5de6d6ab1cbab2a3ca86e.ts
-// js-note: notes/#8076715787fc7e758408eb4268d63666.js
+// ts-note: notes/#a0561327ae6c20d7ee7b8c79efeb2312.ts
+// js-note: notes/#30013f0e9df99076e36be7d98dc5e0e7.js
 
 // import { Graph } from "./pipeline"
 
@@ -20,11 +20,25 @@ type Graph = {
 import { drawGraph } from "./drawGraph"
 import type { DAG } from "./drawGraph"
 
-export const graphView = (graph: Graph, w: number, h: number, ctx: ViewContext): VDom => {
+export type GraphViewOptions = {
+  onNodeClick?: (node: Graph) => void
+}
+
+export const graphView = (
+  graph: Graph,
+  w: number,
+  h: number,
+  ctx: ViewContext,
+  options: GraphViewOptions = {},
+): VDom => {
+  const onNodeClick = options.onNodeClick
   let memo = new Map<Graph, DAG>()
   let todag = (g:Graph):DAG =>{
     if (memo.has(g)) return memo.get(g) as DAG
     let node: DAG = { title: g.$, srcs: [] }
+    if (onNodeClick) {
+      node.onclick = () => onNodeClick(g)
+    }
     memo.set(g, node)
     node.srcs = (g.$ == "input" ? []
       : g.$ == "logic" ? Object.values(g.inputs)
@@ -34,4 +48,3 @@ export const graphView = (graph: Graph, w: number, h: number, ctx: ViewContext):
 
   return HTML.div(drawGraph(todag(graph), w, h, ctx))
 }
-
