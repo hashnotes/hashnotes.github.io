@@ -1,6 +1,7 @@
 import { runWithFuelShared, runWithFuelSharedAsync } from "@hashnotes/core/codegen";
 import { fromjson, hashData, type Jsonable, type Ref } from "@hashnotes/core/notes";
 import { addNote, asRef, callNote, deRef, getNote } from "./db.ts";
+import { openRouterRequest } from "./openrouter.ts";
 import { HTML, type View, type ViewContext, type VDom } from "./views.ts";
 
 type ClientFuelOptions = {
@@ -50,6 +51,15 @@ const createLocalExecutor = (options: ClientFuelOptions): LocalExecutor => {
   const ls = (() => {
     try { return typeof localStorage !== "undefined" ? localStorage : undefined; } catch { return undefined; }
   })();
+  const promptUser = (message: string, defaultValue = ""): string | null => {
+    try {
+      const p = (globalThis as { prompt?: (m: string, d?: string) => string | null }).prompt;
+      if (typeof p === "function") return p(message, defaultValue);
+    } catch {
+      // no-op
+    }
+    return null;
+  };
 
   // Cache: hash → note data (string for code, any Jsonable for data)
   const noteCache = new Map<string, Jsonable>();
@@ -77,7 +87,6 @@ const createLocalExecutor = (options: ClientFuelOptions): LocalExecutor => {
     const args = Array.isArray(argsNote) ? argsNote : [argsNote];
 
     const store = makeStore(fnRef, memStore, ls);
-
     const remote = (fn: unknown): (...remoteArgs: (Ref | Jsonable)[]) => Promise<Jsonable> => {
       const hash = fnToHash.get(fn as Function) ?? fn;
       return (...remoteArgs: (Ref | Jsonable)[]) => callNote(hash as Ref | Jsonable, remoteArgs);
@@ -120,6 +129,8 @@ const createLocalExecutor = (options: ClientFuelOptions): LocalExecutor => {
       deref: deRef,
       hashData,
       fromjson,
+      promptUser,
+      openRouterRequest,
       HTML,
       JSON,
       console,
@@ -164,6 +175,15 @@ export const callViewClient = async (
   const ls = (() => {
     try { return typeof localStorage !== "undefined" ? localStorage : undefined; } catch { return undefined; }
   })();
+  const promptUser = (message: string, defaultValue = ""): string | null => {
+    try {
+      const p = (globalThis as { prompt?: (m: string, d?: string) => string | null }).prompt;
+      if (typeof p === "function") return p(message, defaultValue);
+    } catch {
+      // no-op
+    }
+    return null;
+  };
 
   // Map from wrapper function → hash (for remote() to resolve)
   const fnToHash = new Map<Function, string>();
@@ -184,7 +204,6 @@ export const callViewClient = async (
   for (const dep of parseDeps(fnNote)) await prefetch(dep);
 
   const store = makeStore(fnRef, memStore, ls);
-
   const remote = (fn: unknown): (...remoteArgs: (Ref | Jsonable)[]) => Promise<Jsonable> => {
     const hash = fnToHash.get(fn as Function) ?? fn;
     return (...remoteArgs: (Ref | Jsonable)[]) => callNote(hash as Ref | Jsonable, remoteArgs);
@@ -214,7 +233,7 @@ export const callViewClient = async (
 
   const baseEnv: Record<string, unknown> = {
     ...(options.env ?? {}),
-    remote, getFuncSync, getDataSync, store, addNote, getNote, asRef, deref: deRef, hashData, fromjson, HTML, JSON, console,
+    remote, getFuncSync, getDataSync, store, addNote, getNote, asRef, deref: deRef, hashData, fromjson, promptUser, openRouterRequest, HTML, JSON, console,
   };
 
   // Inlined body — args[0] is the window object.

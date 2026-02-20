@@ -1,145 +1,193 @@
-# Edit flow
+# Hashnotes User Scripts Guide
+
+This guide covers how to develop, run, debug, and publish user scripts in this repo.
+
+## What this system is
+
+- User scripts live in `/Users/iainbanks/code/dkormann/hashnotes/lib/scripts`.
+- Each script is compiled into a content-addressed note function body.
+- Compiled functions and data are stored in the backend as hash refs (`#...`).
+- The app loads and executes these note functions in a sandbox runtime.
 
 ## Quick start
 
-```
-# terminal 1: dev watcher + compiler
+Run in two terminals:
+
+```bash
+# terminal 1: script compiler + history server
 bun run dev:scripts
 
 # terminal 2: app dev server
 bun run dev
 ```
 
-Open `http://localhost:5173/live` to see compiled notes. Click a view name to render it.
+Open:
 
-## How it works
+- `http://localhost:5173/live` for dev history/live links
+- `http://localhost:5173/live/view` for live-rendering latest `view`
 
-Notes are TypeScript files in `lib/scripts/`. Each file exports exactly one arrow function. The dev watcher compiles them into JS function bodies and uploads them as content-addressed notes to SpacetimeDB.
+## Core authoring rules
 
-### File structure
+### 1. One runtime export per script file
 
-```
-lib/scripts/                        <- edit notes here
-  counterFn.ts                        friendly-named source
-  counterView.ts
-  hashnotes-env.d.ts                  ambient types for sandbox globals
-  tsconfig.json                       IDE support
-  history.json                        last 10 compiled entries
-  ts-notes/                           hashed TS copies (gitignored)
-    #a1ad448b...ts
-  js-notes/                           compiled JS bodies (gitignored)
-    #03186aed...js
+- A script module must have exactly one runtime export.
+- `export type ...` is fine (type-only), but only one value export (`export const ...` or `export default ...`).
 
-lib/cli-scripts/                    <- build tooling
-  dev.ts                              dev watcher + compiler
-  smoke.ts                            smoke test
-  note-fn.ts                          note helper utilities
-```
+### 2. Use plain JS syntax that parser/codegen supports
 
-### Writing a note
+Avoid unsupported constructs in user script code bodies, especially:
 
-Every note must export exactly one arrow function:
+- template literals (backticks)
+- regex literals
+
+Prefer simple string concatenation and plain expressions.
+
+### 3. Treat browser-only APIs as unavailable in scripts
+
+- Do not call `fetch` directly from user scripts.
+- Use runtime-provided globals (see Runtime globals section).
+
+## Script types
+
+- `view` script:
+  - Export name `view` (or `default`).
+  - Receives `ctx: ViewContext` and returns `VDom`.
+- function script:
+  - Any other export name.
+  - Callable through runtime (`remote`, `getFuncSync`, etc.).
+
+## Imports
+
+Use relative imports from scripts:
 
 ```ts
-// Server function -- runs on SpacetimeDB via remote()
-export const counterFn = (arg: { delta: number }) => {
-  let count = (store.get("counter") || 0) as number;
-  count += arg.delta;
-  store.set("counter", count);
-  return count;
-};
+import { runPipeline } from "./runPipeline"
+import type { Graph } from "./pipeline"
 ```
+
+The compiler rewrites/import-resolves to hash refs under the hood.
+
+## Runtime globals (available in scripts)
+
+Type declarations are in `/Users/iainbanks/code/dkormann/hashnotes/lib/scripts/hashnotes-env.d.ts`.
+
+Most-used globals:
+
+- `args`
+- `store.get(key)`, `store.set(key, value)`
+- `remote(fn)`
+- `getFuncSync(ref)`, `getDataSync(ref)`
+- `addNote(data)`, `getNote(ref)`, `asRef(x)`, `deref(ref)`
+- `hashData(value)`, `fromjson(text)`
+- `HTML.*` VDom builders
+- `promptUser(message, defaultValue?)`
+- `openRouterRequest({ apiKey, model, prompt, schema })`
+
+## OpenRouter usage (recommended wrapper)
+
+Use `/Users/iainbanks/code/dkormann/hashnotes/lib/scripts/openRouterLocal.ts`.
+
+It does:
+
+- load API key from function-scoped `store`
+- if missing, prompt user via popup
+- persist key in `store`
+- call `openRouterRequest(...)`
+
+Example:
 
 ```ts
-// View -- runs in the browser, receives upper as arg
-import { counterFn } from "./counterFn";
+import { openRouterLocal } from "./openRouterLocal"
 
-export const view = (upper: UPPER) => {
-  const label = HTML.p("count: loading...");
-  const inc = (delta: number) =>
-    remote(counterFn, { delta }).then((count) => {
-      label.textContent = "count: " + count;
-      upper.update(label);
-    });
-  inc(0);
-  return HTML.div(
-    HTML.h2("counter"),
-    label,
-    HTML.button("+1", { onclick: () => inc(1) }),
-    HTML.button("-1", { onclick: () => inc(-1) })
-  );
-};
+export const myFn = async () => {
+  return await openRouterLocal({
+    model: "openai/gpt-4o-mini",
+    prompt: "Extract fields from this text...",
+    schema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+      },
+      required: ["title"],
+      additionalProperties: false,
+    },
+  })
+}
 ```
 
-After compilation, the source file gets a comment header:
-```ts
-// ts-note: ts-notes/#a1ad448b...ts
-// js-note: js-notes/#03186aed...js
-export const counterFn = (arg: { delta: number }) => { ... };
+## Trace pipeline model (current)
+
+- Pipeline execution stores trace nodes atomically as backend notes.
+- Each stored trace node references child inputs by `Ref[]`.
+- Trace visualization loads the tree recursively by root ref.
+
+Related scripts:
+
+- `/Users/iainbanks/code/dkormann/hashnotes/lib/scripts/runPipeline.ts`
+- `/Users/iainbanks/code/dkormann/hashnotes/lib/scripts/loadTrace.ts`
+- `/Users/iainbanks/code/dkormann/hashnotes/lib/scripts/graphView.ts`
+
+## Build/publish workflow
+
+There is no separate manual publish step for normal dev.
+
+When `bun run dev:scripts` is running:
+
+1. Save a script in `lib/scripts`.
+2. Compiler rebuilds in dependency order.
+3. Compiled JS note bodies are uploaded (content-addressed).
+4. `/Users/iainbanks/code/dkormann/hashnotes/lib/scripts/history.json` is updated.
+5. App `/live` and `/live/view` pick up updates.
+
+To share/pin a function/view, use its hash from history.
+
+## Routes
+
+App routes:
+
+- `/:hash` => raw note JSON/data view
+- `/view/:hash` => render note as a view
+- `/live` => dev history UI
+- `/live/view` => live latest view
+
+## Logs and debugging
+
+Browser and dev-script errors both go to:
+
+- `/Users/iainbanks/code/dkormann/hashnotes/lib/scripts/browser-errors.log`
+
+History endpoint used by app live mode:
+
+- `http://localhost:4321/history`
+
+Dev watcher behavior:
+
+- clears `browser-errors.log` each deploy cycle
+- logs compile/server/unhandled errors into that file
+
+## Common failure causes
+
+- `only one export per module`:
+  - more than one runtime export in a script file.
+- `unsupported expression: TemplateLiteral`:
+  - backticks used in script code.
+- `unsupported expression: regexp literals`:
+  - regex literal used in script code.
+- `undeclared: ...`:
+  - identifier not allowed/in scope in sandbox.
+
+## Helpful commands
+
+```bash
+# check all packages
+bun run check
+
+# check lib only
+(cd lib && bun run check)
+
+# run app
+bun run dev
+
+# run script compiler/watcher
+bun run dev:scripts
 ```
-
-### Imports
-
-Source files import by friendly name:
-```ts
-import { counterFn } from "./counterFn";
-```
-
-Hash imports are also supported:
-```ts
-import { counterFn } from "./#a1ad448b7c114e3c5dd50dd7d6cb2407";
-```
-
-The ts-notes copies have all imports rewritten to hash names (frozen snapshots).
-
-### What the compiler does
-
-1. **Strip headers** -- removes `// ts-note:` / `// js-note:` lines before hashing
-2. **Strip types** -- removes TypeScript annotations via `node:module`
-3. **Parse** -- builds an acorn AST from the JS module
-4. **Resolve imports** -- friendly names and hash names both resolve to the dep's JS hash
-5. **Inline the body** -- extracts the arrow function body, binds the parameter from `arg`
-7. **Emit `__deps`** -- prefixes `const __deps = [...]` for runtime prefetching
-8. **Upload** -- `addNote(body)` stores the JS string as a content-addressed note
-9. **Write outputs** -- ts-notes/ (hashed TS copy) and js-notes/ (compiled JS)
-10. **Update header** -- prepends `// ts-note:` and `// js-note:` to source file
-
-### Runtime globals
-
-Notes run in a sandboxed `new Function()` with these injected globals:
-
-| Name | Type | Description |
-|------|------|-------------|
-| `arg` | `any` | The argument passed to the note (upper object for views) |
-| `store` | `{get, set}` | Per-note persistent key/value storage |
-| `remote(fn, arg)` | `-> Promise` | Call a note on the server (SpacetimeDB) |
-| `getFuncSync(ref)` | `-> (arg) -> result` | Get a callable wrapper for a prefetched dep |
-| `HTML` | `{div, p, button, ...}` | VDom element constructors |
-| `addNote`, `getNote`, `asRef`, `deref`, `hashData`, `fromjson` | | Note storage primitives |
-
-Full type definitions are in `lib/scripts/hashnotes-env.d.ts`.
-
-### Dev watcher cycle
-
-1. You save a `.ts` file in `scripts/`
-2. The watcher strips headers, hashes content, builds dependency graph
-3. All files are compiled in dependency order
-4. Hashed copies written to `ts-notes/`, compiled JS to `js-notes/`
-5. JS bodies uploaded as notes to SpacetimeDB
-6. Source files get updated comment headers
-7. `history.json` is updated; the `/live` page polls and refreshes
-
-### Views vs server functions
-
-- **Views** export a function named `view` or `default`. The parameter becomes `arg` which is the `UPPER` object (provides `add`, `del`, `update` for live DOM mutations). The body must return a `VDom`.
-- **Server functions** export any other name. They run on SpacetimeDB when called via `remote()`. They have access to `store` for persistent state.
-- **Local calls** -- imported functions can also be called directly: `counterFn({delta: 1})`. The runtime wraps deps as callable functions.
-
-### Rendering a note
-
-Navigate to `http://localhost:5173/<hash>` (without the `#` prefix). The app:
-
-1. Fetches the note source from SpacetimeDB
-2. Prefetches all `__deps` sources (recursive)
-3. Returns a `(upper: UPPER) => VDom` function
-4. `renderDom()` calls it with an `UPPER` object wired to the real DOM

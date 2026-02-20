@@ -1,8 +1,9 @@
-// ts-note: notes/#b7086a5b06b39e2a1c1639836641d00d.ts
-// js-note: notes/#4c9b409a591b4b7725edd73b19e6c0c6.js
+// ts-note: notes/#b42ace5109b2223b4ae60a08c165386e.ts
+// js-note: notes/#46c4766b7a143fc931c78f5e245b74a0.js
 
 import { runPipeline } from "./runPipeline"
-import type { GraphTrace } from "./runPipeline"
+import { loadTrace } from "./loadTrace"
+import type { GraphTrace } from "./loadTrace"
 
 
 type Graph = {
@@ -39,6 +40,7 @@ export const graphView = (
   const runInput = options.runInput ?? "seed"
   const paneW = Math.max(200, Math.floor((w - 16) / 2))
   let memo = new Map<Graph, DAG>()
+  let memoByHash = new Map<Ref, DAG>()
   let sourceGraphCtl: DrawGraphResult | null = null
 
   const formatValue = (x: Jsonable): string => {
@@ -60,7 +62,7 @@ export const graphView = (
       const start = startTrace ? startTrace.value : null
       const clickTrace = (t: GraphTrace) => {
         if (sourceGraphCtl) {
-          const srcNode = memo.get(t.graph as Graph)
+          const srcNode = memoByHash.get(hashData(t.graph as unknown as Jsonable))
           sourceGraphCtl.highlight(srcNode ? srcNode : null)
         }
         if (onTraceNodeClick) onTraceNodeClick(t)
@@ -82,7 +84,7 @@ export const graphView = (
     }
     node.onclick = () => {
       if (sourceGraphCtl) {
-        const srcNode = memo.get(trace.graph as Graph)
+        const srcNode = memoByHash.get(hashData(trace.graph as unknown as Jsonable))
         sourceGraphCtl.highlight(srcNode ? srcNode : null)
       }
       if (onTraceNodeClick) onTraceNodeClick(trace)
@@ -97,6 +99,7 @@ export const graphView = (
       node.onclick = () => onNodeClick(g)
     }
     memo.set(g, node)
+    memoByHash.set(hashData(g as unknown as Jsonable), node)
     node.srcs = (g.$ == "input" ? []
       : g.$ == "logic" ? Object.values(g.inputs)
       : [g.input, g.body, g.condition]).map(todag)
@@ -118,8 +121,8 @@ export const graphView = (
             root.children = render().children
             ctx.update(root)
             try {
-              const trace = runPipeline(graph, runInput)
-              const ref = await addNote(trace as unknown as Jsonable)
+              const ref = await runPipeline(graph, runInput)
+              const trace = await loadTrace(ref)
               lastTrace = trace
               lastRef = ref
               status = "saved: " + ref

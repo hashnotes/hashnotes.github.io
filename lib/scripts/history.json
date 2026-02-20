@@ -1,21 +1,15 @@
 [
   {
-    "tsHash": "#e4ed00ce23197e547addafe7c3bd34e9",
-    "jsHash": "#d33e5a4f135f4dfff02de3e918b9fe0a",
-    "exportName": "counterFn",
-    "filename": "#e4ed00ce23197e547addafe7c3bd34e9"
-  },
-  {
-    "tsHash": "#a782af823fd33aacde46fbd74c0ee269",
-    "jsHash": "#e17bce2eb689c9334e17c873520c9864",
-    "exportName": "graph",
-    "filename": "pipeline"
-  },
-  {
-    "tsHash": "#51f9ea102128c10ced6003b8f51a663f",
-    "jsHash": "#d130627d77e8b29bb6a823880b575078",
+    "tsHash": "#d58f86ac36dac75fb554e4859d7d641c",
+    "jsHash": "#d1cad27543049153266262071299dca0",
     "exportName": "runPipeline",
     "filename": "runPipeline"
+  },
+  {
+    "tsHash": "#69623cfa0a13ab5f1992795f4b997f8a",
+    "jsHash": "#a249c382c8fe40385ba7f6ececcad85b",
+    "exportName": "loadTrace",
+    "filename": "loadTrace"
   },
   {
     "tsHash": "#97309c6ee9d58f410340e565180db6c0",
@@ -24,14 +18,14 @@
     "filename": "drawGraph"
   },
   {
-    "tsHash": "#b7086a5b06b39e2a1c1639836641d00d",
-    "jsHash": "#4c9b409a591b4b7725edd73b19e6c0c6",
+    "tsHash": "#b42ace5109b2223b4ae60a08c165386e",
+    "jsHash": "#46c4766b7a143fc931c78f5e245b74a0",
     "exportName": "graphView",
     "filename": "graphView"
   },
   {
-    "tsHash": "#0dd3c52422c8c9001e0e18694d269a5f",
-    "jsHash": "#b5911ce87205ab09176b627a15be53f4",
+    "tsHash": "#17e7cb8403b50528fc8e10da37fbb6f1",
+    "jsHash": "#4f8256cfc3668b3582f5c0c3723cc3f0",
     "exportName": "view",
     "filename": "AppView"
   },
@@ -46,6 +40,12 @@
     "jsHash": "#d553ef1fda823d5c0e1e26028a74de21",
     "exportName": "mkView",
     "filename": "jsontree"
+  },
+  {
+    "tsHash": "#52fcda47c7e6864fed8fb4787cf20d1c",
+    "jsHash": "#e7652bba1ad9dbb8c3beeefd156cc449",
+    "exportName": "openRouterLocal",
+    "filename": "openRouterLocal"
   },
   {
     "tsHash": "#14590792e3a8b7f1501a006b763c2030",

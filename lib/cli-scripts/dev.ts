@@ -66,6 +66,23 @@ const getExportName = (src: string): string => {
 
 let currentHistory: HistoryEntry[] = [];
 
+const errText = (err: unknown): string => {
+  if (err instanceof Error) return err.stack || `${err.name}: ${err.message}`;
+  return String(err);
+};
+
+const logDevScriptError = (source: string, err: unknown, details: Record<string, string> = {}) => {
+  const at = new Date().toISOString();
+  const lines = [
+    `\n[${at}] dev script error`,
+    `source: ${source}`,
+    ...Object.entries(details).map(([k, v]) => `${k}: ${v}`),
+    `message: ${errText(err)}`,
+  ].join("\n");
+  appendFileSync(BROWSER_ERRORS_PATH, `${lines}\n`);
+  console.error(lines);
+};
+
 // --- compilation ---
 
 /** Normalize an import dep string: strip .ts/.json suffix and notes/ prefix */
@@ -373,7 +390,7 @@ const run = async () => {
   try {
     await compile();
   } catch (err) {
-    console.error("compile error:", err);
+    logDevScriptError("compile", err);
   }
 };
 
@@ -383,6 +400,10 @@ server.listen(LIVE_PORT, async () => {
   await run();
 });
 
+server.on("error", (err) => {
+  logDevScriptError("http-server", err, { port: String(LIVE_PORT) });
+});
+
 let debounce: ReturnType<typeof setTimeout> | null = null;
 watch(SCRIPTS_DIR, { persistent: true, recursive: false }, (_event, filename) => {
   if (!filename || filename === "history.json") return;
@@ -390,4 +411,12 @@ watch(SCRIPTS_DIR, { persistent: true, recursive: false }, (_event, filename) =>
   if (filename.endsWith(".d.ts")) return;
   if (debounce) clearTimeout(debounce);
   debounce = setTimeout(run, 200);
+});
+
+process.on("unhandledRejection", (reason) => {
+  logDevScriptError("unhandledRejection", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  logDevScriptError("uncaughtException", err);
 });

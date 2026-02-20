@@ -43,6 +43,13 @@ declare const asRef: (input: Ref | Jsonable) => Promise<Ref>;
 declare const deref: (ref: Ref) => Promise<Jsonable>;
 declare const hashData: (value: Jsonable) => Ref;
 declare const fromjson: (x: string) => Jsonable;
+declare const promptUser: (message: string, defaultValue?: string) => string | null;
+declare const openRouterRequest: (req: {
+  apiKey: string
+  model: string
+  prompt: string
+  schema: Jsonable
+}) => Promise<Jsonable>;
 
 // Safe subset of standard globals
 declare const Object: {

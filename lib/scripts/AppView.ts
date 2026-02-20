@@ -1,11 +1,14 @@
-// ts-note: notes/#0dd3c52422c8c9001e0e18694d269a5f.ts
-// js-note: notes/#b5911ce87205ab09176b627a15be53f4.js
+// ts-note: notes/#17e7cb8403b50528fc8e10da37fbb6f1.ts
+// js-note: notes/#4f8256cfc3668b3582f5c0c3723cc3f0.js
 
 import { graphView } from "./graphView.ts";
 import type { Graph } from "./pipeline.ts";
-import type { GraphTrace } from "./runPipeline.ts";
+import type { GraphTrace } from "./loadTrace.ts";
 
 export const view: View = (ctx) => {
+
+  console.log(await openRouterRequest())
+
   const previewPaneW = 360
   const graphAreaW = Math.max(420, ctx.width - previewPaneW - 64)
   const graphAreaH = Math.max(280, Math.floor(ctx.height * 0.66))
