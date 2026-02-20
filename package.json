@@ -7,9 +7,7 @@
     "check": "(cd core && bun run check) && (cd lib && bun run check) && (cd app && bun run check)",
     "test": "(cd core && bun run test) && (cd lib && bun run test) && (cd lib && bun run test:backend)",
     "dev": "(cd app && bun run dev)",
-    "build": "(cd app && bun run build) && cp docs/index.html docs/404.html"
-  },
-  "devDependencies": {
-    "vite": "^6.0.0"
+    "dev:scripts": "(cd lib && bun run dev)",
+    "build": "(cd app && bun run build)"
   }
 }

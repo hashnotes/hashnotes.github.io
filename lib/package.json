@@ -9,9 +9,9 @@
   "scripts": {
     "test": "node --test --experimental-strip-types __tests__/dag.test.ts __tests__/localstore.test.ts __tests__/compile.test.ts",
     "test:backend": "node --test --experimental-strip-types __tests__/backend.test.ts",
-    "script": "bun",
-    "script:smoke": "bun run cli-scripts/smoke.ts",
-    "dev": "bun run cli-scripts/dev.ts",
+    "script": "node --no-warnings=ExperimentalWarning --experimental-strip-types",
+    "script:smoke": "node --no-warnings=ExperimentalWarning --experimental-strip-types cli-scripts/smoke.ts",
+    "dev": "node --no-warnings=ExperimentalWarning --experimental-strip-types cli-scripts/dev.ts",
     "check": "tsc --noEmit"
   },
   "dependencies": {

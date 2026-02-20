@@ -5,9 +5,12 @@
   "main": "src/main.ts",
   "scripts": {
     "check": "tsc --noEmit",
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "bun run scripts/dev.ts",
+    "build": "bun run scripts/build.ts",
+    "preview": "bun run scripts/preview.ts"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.10"
   },
   "dependencies": {
     "@hashnotes/core": "*",

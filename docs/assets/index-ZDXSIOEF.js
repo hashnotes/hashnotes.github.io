@@ -1,48 +1,12 @@
-(function polyfill() {
-  const relList = document.createElement("link").relList;
-  if (relList && relList.supports && relList.supports("modulepreload")) {
-    return;
-  }
-  for (const link of document.querySelectorAll('link[rel="modulepreload"]')) {
-    processPreload(link);
-  }
-  new MutationObserver((mutations) => {
-    for (const mutation of mutations) {
-      if (mutation.type !== "childList") {
-        continue;
-      }
-      for (const node of mutation.addedNodes) {
-        if (node.tagName === "LINK" && node.rel === "modulepreload")
-          processPreload(node);
-      }
-    }
-  }).observe(document, { childList: true, subtree: true });
-  function getFetchOpts(link) {
-    const fetchOpts = {};
-    if (link.integrity) fetchOpts.integrity = link.integrity;
-    if (link.referrerPolicy) fetchOpts.referrerPolicy = link.referrerPolicy;
-    if (link.crossOrigin === "use-credentials")
-      fetchOpts.credentials = "include";
-    else if (link.crossOrigin === "anonymous") fetchOpts.credentials = "omit";
-    else fetchOpts.credentials = "same-origin";
-    return fetchOpts;
-  }
-  function processPreload(link) {
-    if (link.ep)
-      return;
-    link.ep = true;
-    const fetchOpts = getFetchOpts(link);
-    fetch(link.href, fetchOpts);
-  }
-})();
-const mouseEvents = ["click", "mousemove", "mouseup", "mousedown", "drag", "wheel"];
-const keyboardEvents = ["keydown", "keyup"];
-const svgNamespace = "http://www.w3.org/2000/svg";
-const svgTags = /* @__PURE__ */ new Set(["svg", "path", "g", "line", "polyline", "polygon", "circle", "ellipse", "rect", "text"]);
-const allowedAttributeNames = /* @__PURE__ */ new Set(["viewBox", "width", "height", "xmlns", "d", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "stroke-dasharray", "stroke-dashoffset", "x", "y", "x1", "y1", "x2", "y2", "cx", "cy", "r", "rx", "ry", "points", "transform", "opacity", "font-size", "font-family", "font-weight", "text-anchor", "dominant-baseline", "dx", "dy"]);
-let doms = /* @__PURE__ */ new WeakMap();
-let elements = /* @__PURE__ */ new WeakMap();
-const renderDom = (mker) => {
+// ../lib/src/views.ts
+var mouseEvents = ["click", "mousemove", "mouseup", "mousedown", "drag", "wheel"];
+var keyboardEvents = ["keydown", "keyup"];
+var svgNamespace = "http://www.w3.org/2000/svg";
+var svgTags = /* @__PURE__ */ new Set(["svg", "path", "g", "line", "polyline", "polygon", "circle", "ellipse", "rect", "text"]);
+var allowedAttributeNames = /* @__PURE__ */ new Set(["viewBox", "width", "height", "xmlns", "d", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "stroke-dasharray", "stroke-dashoffset", "x", "y", "x1", "y1", "x2", "y2", "cx", "cy", "r", "rx", "ry", "points", "transform", "opacity", "font-size", "font-family", "font-weight", "text-anchor", "dominant-baseline", "dx", "dy", "href", "target", "rel"]);
+var doms = /* @__PURE__ */ new WeakMap();
+var elements = /* @__PURE__ */ new WeakMap();
+var renderDom = (mker, location = { pathname: "/" }, width = globalThis.innerWidth ?? 0, height = globalThis.innerHeight ?? 0) => {
   const render = (dom) => {
     const el2 = svgTags.has(dom.tag) ? document.createElementNS(svgNamespace, dom.tag) : document.createElement(dom.tag);
     el2.textContent = dom.textContent;
@@ -56,7 +20,7 @@ const renderDom = (mker) => {
     Object.entries(dom.style).forEach((st) => el2.style.setProperty(...st));
     mouseEvents.forEach((type) => el2.addEventListener(type, (e) => {
       const me = e;
-      if (dom.onEvent != void 0) dom.onEvent({
+      const event = {
         type,
         target: doms.get(e.target),
         clientX: me.clientX,
@@ -64,24 +28,29 @@ const renderDom = (mker) => {
         deltaY: type === "wheel" ? me.deltaY : void 0,
         currentTarget: el2,
         preventDefault: () => e.preventDefault()
-      });
+      };
+      if (type === "click" && dom.onclick) dom.onclick(event);
+      else if (type === "mousedown" && dom.onmousedown) dom.onmousedown(event);
+      else if (type === "mouseup" && dom.onmouseup) dom.onmouseup(event);
+      else if (type === "mousemove" && dom.onmousemove) dom.onmousemove(event);
+      else if (type === "wheel" && dom.onwheel) dom.onwheel(event);
     }));
     keyboardEvents.forEach((type) => el2.addEventListener(type, (e) => {
       let { key, metaKey, shiftKey } = e;
       if (["INPUT", "TEXTAREA"].includes(e.target.tagName)) dom.value = e.target.value;
-      if (dom.onEvent != void 0) dom.onEvent({ type, key, metaKey, shiftKey, target: doms.get(e.target) });
+      const event = { type, key, metaKey, shiftKey, target: doms.get(e.target) };
+      if (type === "keydown" && dom.onkeydown) dom.onkeydown(event);
+      else if (type === "keyup" && dom.onkeyup) dom.onkeyup(event);
     }));
     return el2;
   };
   return render(mker({
     add: (parent, ...el2) => {
-      var _a;
-      (_a = elements.get(parent)) == null ? void 0 : _a.append(...el2.map((e) => render(e)));
+      elements.get(parent)?.append(...el2.map((e) => render(e)));
     },
     del: (el2) => {
-      var _a;
       doms.delete(elements.get(el2));
-      (_a = elements.get(el2)) == null ? void 0 : _a.remove();
+      elements.get(el2)?.remove();
       elements.delete(el2);
     },
     update: (el2) => {
@@ -89,45 +58,44 @@ const renderDom = (mker) => {
       if (!oldel) return;
       oldel.replaceWith(render(el2));
       doms.delete(oldel);
-    }
+    },
+    location,
+    width,
+    height
   }));
 };
-const mkDom = (tag) => (...content) => {
-  let listeners = /* @__PURE__ */ new Map();
-  let dm = {
-    tag,
-    style: {},
-    attrs: {},
-    textContent: "",
-    id: "",
-    children: [],
-    onEvent: (e) => {
-      let fn = listeners.get(e.type);
-      if (fn) return fn(e);
-    }
-  };
+var mkDom = (tag) => (...content) => {
+  let dm = { tag, style: {}, attrs: {}, textContent: "", id: "", children: [] };
+  let strings = [];
   let addcontent = (c) => {
     if (c instanceof Array) c.forEach(addcontent);
-    else if (typeof c == "string") dm.textContent = c;
+    else if (typeof c == "string") strings.push(c);
     else if (c instanceof Object) {
       if ("tag" in c) return dm.children.push(c);
       if ("id" in c) dm.id = c.id;
       if ("value" in c) dm.value = c.value;
       if ("attrs" in c) Object.entries(c.attrs).forEach(([k, v]) => dm.attrs[k] = v);
       if ("style" in c) Object.entries(c.style).forEach((s) => dm.style[s[0].replace(/([A-Z])/g, "-$1")] = s[1]);
-      Object.entries(c).forEach(([k, v]) => {
-        if (k.startsWith("on")) listeners.set(k.slice(2), v);
-      });
+      if ("onclick" in c) dm.onclick = c.onclick;
+      if ("onmousedown" in c) dm.onmousedown = c.onmousedown;
+      if ("onmouseup" in c) dm.onmouseup = c.onmouseup;
+      if ("onmousemove" in c) dm.onmousemove = c.onmousemove;
+      if ("onwheel" in c) dm.onwheel = c.onwheel;
+      if ("onkeydown" in c) dm.onkeydown = c.onkeydown;
+      if ("onkeyup" in c) dm.onkeyup = c.onkeyup;
     }
   };
   addcontent(content);
+  dm.textContent += strings.join(" ");
   return dm;
 };
-let div = mkDom("div");
-let svg = mkDom("svg");
-let path = mkDom("path");
-let text = mkDom("text");
-const popup = (...cs) => {
+var div = mkDom("div");
+var svg = mkDom("svg");
+var path = mkDom("path");
+var g = mkDom("g");
+var rect = mkDom("rect");
+var text = (attrs, ...content) => ({ tag: "text", style: {}, attrs, textContent: content.join(" "), id: "", children: [] });
+var popup = (...cs) => {
   const dialogfield = div(
     {
       style: {
@@ -159,7 +127,7 @@ const popup = (...cs) => {
   );
   return popupbackground;
 };
-const HTML = {
+var HTML = {
   div,
   span: mkDom("span"),
   p: mkDom("p"),
@@ -176,10 +144,8 @@ const HTML = {
   pre: mkDom("pre"),
   svgPath: (pathData, options = {}, ...children) => {
     const paths = pathData instanceof Array ? pathData : [pathData];
-    const { viewBox = "0 0 24 24", width = "1em", height = "1em", fill = "currentColor", stroke, strokeWidth } = options;
-    const pathAttrs = { fill };
-    if (stroke) pathAttrs.stroke = stroke;
-    if (strokeWidth) pathAttrs["stroke-width"] = strokeWidth;
+    const { viewBox = "0 0 100 100", width = "100", height = "100", fill = "none", stroke = "var(--color)", strokeWidth = "1" } = options;
+    const pathAttrs = { fill, stroke, "stroke-width": strokeWidth };
     return svg(
       { attrs: { viewBox, width, height, xmlns: svgNamespace } },
       ...paths.map((d) => path({ attrs: { ...pathAttrs, d } })),
@@ -187,27 +153,42 @@ const HTML = {
     );
   },
   svgText: (content, options = {}) => {
-    const attrs = {};
-    if (options.x) attrs.x = options.x;
-    if (options.y) attrs.y = options.y;
-    if (options.fill) attrs.fill = options.fill;
-    if (options.background) attrs.background = options.background;
-    if (options.fontSize) attrs["font-size"] = options.fontSize;
+    const fs = Number(options.fontSize ?? 12);
+    const x = options.x ?? "50";
+    const y = options.y ?? "50";
+    const attrs = {
+      fill: options.fill ?? "var(--color)",
+      "font-size": String(fs),
+      x,
+      y,
+      "text-anchor": options.textAnchor ?? "middle",
+      "dominant-baseline": options.dominantBaseline ?? "middle"
+    };
     if (options.fontFamily) attrs["font-family"] = options.fontFamily;
     if (options.fontWeight) attrs["font-weight"] = options.fontWeight;
-    if (options.textAnchor) attrs["text-anchor"] = options.textAnchor;
-    if (options.dominantBaseline) attrs["dominant-baseline"] = options.dominantBaseline;
     if (options.dx) attrs.dx = options.dx;
     if (options.dy) attrs.dy = options.dy;
-    return text({ attrs }, content);
+    const textNode = text(attrs, content);
+    if (!options.background) return textNode;
+    const pad = fs * 0.4;
+    const rw = content.length * fs * 0.6 + pad * 2;
+    const rh = fs + pad * 2;
+    const rx = Number(x) - rw / 2;
+    const ry = Number(y) - rh / 2;
+    return g(
+      rect({ attrs: { x: String(rx), y: String(ry), width: String(rw), height: String(rh), fill: options.background, rx: String(pad) } }),
+      textNode
+    );
   },
   popup
 };
-const FNV_OFFSET_1 = 0xcbf29ce484222325n;
-const FNV_OFFSET_2 = 0x84222325cbf29ce4n;
-const FNV_PRIME = 0x100000001b3n;
-const MASK_64 = (1n << 64n) - 1n;
-const hash64 = (value, offset2) => {
+
+// ../core/src/notes.ts
+var FNV_OFFSET_1 = 0xcbf29ce484222325n;
+var FNV_OFFSET_2 = 0x84222325cbf29ce4n;
+var FNV_PRIME = 0x100000001b3n;
+var MASK_64 = (1n << 64n) - 1n;
+var hash64 = (value, offset2) => {
   let hash = offset2;
   for (let i = 0; i < value.length; i += 1) {
     hash ^= BigInt(value.charCodeAt(i));
@@ -215,17 +196,17 @@ const hash64 = (value, offset2) => {
   }
   return hash;
 };
-const toHex64 = (value) => value.toString(16).padStart(16, "0");
-const hash128 = (...data2) => {
+var toHex64 = (value) => value.toString(16).padStart(16, "0");
+var hash128 = (...data2) => {
   const input = JSON.stringify(data2);
   const high = hash64(input, FNV_OFFSET_1);
   const low = hash64(input, FNV_OFFSET_2);
   return `#${toHex64(high)}${toHex64(low)}`;
 };
-const tojson = (x) => JSON.stringify(x, null, 2);
-const fromjson = (x) => JSON.parse(x);
-const isRef = (value) => typeof value === "string" && /^#([a-f0-9]{32})$/i.test(value);
-const hashData = (value) => {
+var tojson = (x) => JSON.stringify(x, null, 2);
+var fromjson = (x) => JSON.parse(x);
+var isRef = (value) => typeof value === "string" && /^#([a-f0-9]{32})$/i.test(value);
+var hashData = (value) => {
   if (isRef(value)) return value;
   if (["string", "number", "boolean"].includes(typeof value) || value === null) {
     return hash128(tojson(value));
@@ -237,12 +218,11 @@ const hashData = (value) => {
   }
   throw new Error(`unsupported type for hashing: ${typeof value}`);
 };
-const DB_NAME = "hashnotes";
-const env = () => {
-  var _a;
-  return (_a = globalThis == null ? void 0 : globalThis.process) == null ? void 0 : _a.env;
-};
-const KV = (() => {
+
+// ../lib/src/db.ts
+var DB_NAME = "hashnotes";
+var env = () => globalThis?.process?.env;
+var KV = (() => {
   try {
     if (typeof localStorage !== "undefined" && localStorage) return localStorage;
   } catch {
@@ -258,20 +238,20 @@ const KV = (() => {
     }
   };
 })();
-let SERVER = (() => {
+var SERVER = (() => {
   const e = env();
-  const v = e == null ? void 0 : e.HASHNOTES_SERVER;
+  const v = e?.HASHNOTES_SERVER;
   return v === "local" || v === "maincloud" ? v : KV.getItem("db_preset") === "local" ? "local" : "maincloud";
 })();
-const baseUrl = () => ({
+var baseUrl = () => ({
   local: "http://localhost:3000",
   maincloud: "https://maincloud.spacetimedb.com"
 })[SERVER];
-const accessToken = async () => {
+var accessToken = async () => {
   let tokenkey = () => `access_token:${SERVER}`;
   let tkey = tokenkey();
   const e = env();
-  const envToken = (SERVER === "local" ? e == null ? void 0 : e.HASHNOTES_ACCESS_TOKEN_LOCAL : e == null ? void 0 : e.HASHNOTES_ACCESS_TOKEN_MAINCLOUD) ?? (e == null ? void 0 : e.HASHNOTES_ACCESS_TOKEN);
+  const envToken = (SERVER === "local" ? e?.HASHNOTES_ACCESS_TOKEN_LOCAL : e?.HASHNOTES_ACCESS_TOKEN_MAINCLOUD) ?? e?.HASHNOTES_ACCESS_TOKEN;
   if (envToken) return envToken;
   let token = KV.getItem(tkey);
   if (!token) {
@@ -281,9 +261,9 @@ const accessToken = async () => {
   }
   return token;
 };
-let getServer = () => SERVER;
+var getServer = () => SERVER;
 console.log("connect to", SERVER);
-const call = async (name, payload) => {
+var call = async (name, payload) => {
   const res = await fetch(`${baseUrl()}/v1/database/${DB_NAME}/call/${name}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: await accessToken().then((t) => t ? `Bearer ${t}` : "") },
@@ -293,10 +273,10 @@ const call = async (name, payload) => {
   if (!res.ok) throw new Error(text2);
   return text2;
 };
-const noteCache = /* @__PURE__ */ new Map();
-const addInFlight = /* @__PURE__ */ new Map();
-const getInFlight = /* @__PURE__ */ new Map();
-const addNote = async (data2, options = {}) => {
+var noteCache = /* @__PURE__ */ new Map();
+var addInFlight = /* @__PURE__ */ new Map();
+var getInFlight = /* @__PURE__ */ new Map();
+var addNote = async (data2, options = {}) => {
   const { skipCache = false } = options;
   const hash = hashData(data2);
   if (!skipCache) {
@@ -317,7 +297,7 @@ const addNote = async (data2, options = {}) => {
     if (!skipCache) addInFlight.delete(hash);
   }
 };
-const getNote = async (hash, options = {}) => {
+var getNote = async (hash, options = {}) => {
   const { skipCache = false } = options;
   if (!skipCache) {
     const cached = noteCache.get(hash);
@@ -347,17 +327,19 @@ const getNote = async (hash, options = {}) => {
     if (!skipCache) getInFlight.delete(hash);
   }
 };
-const deRef = async (value) => isRef(value) ? getNote(value).then(deRef) : value;
-const asRef = async (value) => isRef(value) ? value : addNote(value);
-const callNote = async (fn, arg) => {
+var deRef = async (value) => isRef(value) ? getNote(value).then(deRef) : value;
+var asRef = async (value) => isRef(value) ? value : addNote(value);
+var callNote = async (fn, args) => {
   const fnRef = await asRef(fn);
-  const argRef = await asRef(arg === void 0 ? null : arg);
-  return await call("call_note", { fn: fnRef, arg: argRef }).then(fromjson).then(deRef);
+  const argsRef = await asRef(args === void 0 ? [] : args);
+  return await call("call_note", { fn: fnRef, arg: argsRef }).then(fromjson).then(deRef);
 };
+
+// ../node_modules/acorn/dist/acorn.mjs
 var astralIdentifierCodes = [509, 0, 227, 0, 150, 4, 294, 9, 1368, 2, 2, 1, 6, 3, 41, 2, 5, 0, 166, 1, 574, 3, 9, 9, 7, 9, 32, 4, 318, 1, 80, 3, 71, 10, 50, 3, 123, 2, 54, 14, 32, 10, 3, 1, 11, 3, 46, 10, 8, 0, 46, 9, 7, 2, 37, 13, 2, 9, 6, 1, 45, 0, 13, 2, 49, 13, 9, 3, 2, 11, 83, 11, 7, 0, 3, 0, 158, 11, 6, 9, 7, 3, 56, 1, 2, 6, 3, 1, 3, 2, 10, 0, 11, 1, 3, 6, 4, 4, 68, 8, 2, 0, 3, 0, 2, 3, 2, 4, 2, 0, 15, 1, 83, 17, 10, 9, 5, 0, 82, 19, 13, 9, 214, 6, 3, 8, 28, 1, 83, 16, 16, 9, 82, 12, 9, 9, 7, 19, 58, 14, 5, 9, 243, 14, 166, 9, 71, 5, 2, 1, 3, 3, 2, 0, 2, 1, 13, 9, 120, 6, 3, 6, 4, 0, 29, 9, 41, 6, 2, 3, 9, 0, 10, 10, 47, 15, 343, 9, 54, 7, 2, 7, 17, 9, 57, 21, 2, 13, 123, 5, 4, 0, 2, 1, 2, 6, 2, 0, 9, 9, 49, 4, 2, 1, 2, 4, 9, 9, 330, 3, 10, 1, 2, 0, 49, 6, 4, 4, 14, 10, 5350, 0, 7, 14, 11465, 27, 2343, 9, 87, 9, 39, 4, 60, 6, 26, 9, 535, 9, 470, 0, 2, 54, 8, 3, 82, 0, 12, 1, 19628, 1, 4178, 9, 519, 45, 3, 22, 543, 4, 4, 5, 9, 7, 3, 6, 31, 3, 149, 2, 1418, 49, 513, 54, 5, 49, 9, 0, 15, 0, 23, 4, 2, 14, 1361, 6, 2, 16, 3, 6, 2, 1, 2, 4, 101, 0, 161, 6, 10, 9, 357, 0, 62, 13, 499, 13, 245, 1, 2, 9, 726, 6, 110, 6, 6, 9, 4759, 9, 787719, 239];
 var astralIdentifierStartCodes = [0, 11, 2, 25, 2, 18, 2, 1, 2, 14, 3, 13, 35, 122, 70, 52, 268, 28, 4, 48, 48, 31, 14, 29, 6, 37, 11, 29, 3, 35, 5, 7, 2, 4, 43, 157, 19, 35, 5, 35, 5, 39, 9, 51, 13, 10, 2, 14, 2, 6, 2, 1, 2, 10, 2, 14, 2, 6, 2, 1, 4, 51, 13, 310, 10, 21, 11, 7, 25, 5, 2, 41, 2, 8, 70, 5, 3, 0, 2, 43, 2, 1, 4, 0, 3, 22, 11, 22, 10, 30, 66, 18, 2, 1, 11, 21, 11, 25, 71, 55, 7, 1, 65, 0, 16, 3, 2, 2, 2, 28, 43, 28, 4, 28, 36, 7, 2, 27, 28, 53, 11, 21, 11, 18, 14, 17, 111, 72, 56, 50, 14, 50, 14, 35, 39, 27, 10, 22, 251, 41, 7, 1, 17, 2, 60, 28, 11, 0, 9, 21, 43, 17, 47, 20, 28, 22, 13, 52, 58, 1, 3, 0, 14, 44, 33, 24, 27, 35, 30, 0, 3, 0, 9, 34, 4, 0, 13, 47, 15, 3, 22, 0, 2, 0, 36, 17, 2, 24, 20, 1, 64, 6, 2, 0, 2, 3, 2, 14, 2, 9, 8, 46, 39, 7, 3, 1, 3, 21, 2, 6, 2, 1, 2, 4, 4, 0, 19, 0, 13, 4, 31, 9, 2, 0, 3, 0, 2, 37, 2, 0, 26, 0, 2, 0, 45, 52, 19, 3, 21, 2, 31, 47, 21, 1, 2, 0, 185, 46, 42, 3, 37, 47, 21, 0, 60, 42, 14, 0, 72, 26, 38, 6, 186, 43, 117, 63, 32, 7, 3, 0, 3, 7, 2, 1, 2, 23, 16, 0, 2, 0, 95, 7, 3, 38, 17, 0, 2, 0, 29, 0, 11, 39, 8, 0, 22, 0, 12, 45, 20, 0, 19, 72, 200, 32, 32, 8, 2, 36, 18, 0, 50, 29, 113, 6, 2, 1, 2, 37, 22, 0, 26, 5, 2, 1, 2, 31, 15, 0, 328, 18, 16, 0, 2, 12, 2, 33, 125, 0, 80, 921, 103, 110, 18, 195, 2637, 96, 16, 1071, 18, 5, 26, 3994, 6, 582, 6842, 29, 1763, 568, 8, 30, 18, 78, 18, 29, 19, 47, 17, 3, 32, 20, 6, 18, 433, 44, 212, 63, 129, 74, 6, 0, 67, 12, 65, 1, 2, 0, 29, 6135, 9, 1237, 42, 9, 8936, 3, 2, 6, 2, 1, 2, 290, 16, 0, 30, 2, 3, 0, 15, 3, 9, 395, 2309, 106, 6, 12, 4, 8, 8, 9, 5991, 84, 2, 70, 2, 1, 3, 0, 3, 1, 3, 3, 2, 11, 2, 0, 2, 6, 2, 64, 2, 3, 3, 7, 2, 6, 2, 27, 2, 3, 2, 4, 2, 0, 4, 6, 2, 339, 3, 24, 2, 24, 2, 30, 2, 24, 2, 30, 2, 24, 2, 30, 2, 24, 2, 30, 2, 24, 2, 7, 1845, 30, 7, 5, 262, 61, 147, 44, 11, 6, 17, 0, 322, 29, 19, 43, 485, 27, 229, 29, 3, 0, 496, 6, 2, 3, 2, 1, 2, 14, 2, 196, 60, 67, 8, 0, 1205, 3, 2, 26, 2, 1, 2, 0, 3, 0, 2, 9, 2, 3, 2, 0, 2, 0, 7, 0, 5, 0, 2, 0, 2, 0, 2, 2, 2, 1, 2, 0, 3, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 1, 2, 0, 3, 3, 2, 6, 2, 3, 2, 3, 2, 0, 2, 9, 2, 16, 6, 2, 2, 4, 2, 16, 4421, 42719, 33, 4153, 7, 221, 3, 5761, 15, 7472, 16, 621, 2467, 541, 1507, 4938, 6, 4191];
-var nonASCIIidentifierChars = "‌‍·̀-ͯ·҃-֑҇-ׇֽֿׁׂׅׄؐ-ًؚ-٩ٰۖ-ۜ۟-۪ۤۧۨ-ۭ۰-۹ܑܰ-݊ަ-ް߀-߉߫-߽߳ࠖ-࠙ࠛ-ࠣࠥ-ࠧࠩ-࡙࠭-࡛ࢗ-࢟࣊-ࣣ࣡-ःऺ-़ा-ॏ॑-ॗॢॣ०-९ঁ-ঃ়া-ৄেৈো-্ৗৢৣ০-৯৾ਁ-ਃ਼ਾ-ੂੇੈੋ-੍ੑ੦-ੱੵઁ-ઃ઼ા-ૅે-ૉો-્ૢૣ૦-૯ૺ-૿ଁ-ଃ଼ା-ୄେୈୋ-୍୕-ୗୢୣ୦-୯ஂா-ூெ-ைொ-்ௗ௦-௯ఀ-ఄ఼ా-ౄె-ైొ-్ౕౖౢౣ౦-౯ಁ-ಃ಼ಾ-ೄೆ-ೈೊ-್ೕೖೢೣ೦-೯ೳഀ-ഃ഻഼ാ-ൄെ-ൈൊ-്ൗൢൣ൦-൯ඁ-ඃ්ා-ුූෘ-ෟ෦-෯ෲෳัิ-ฺ็-๎๐-๙ັິ-ຼ່-໎໐-໙༘༙༠-༩༹༵༷༾༿ཱ-྄྆྇ྍ-ྗྙ-ྼ࿆ါ-ှ၀-၉ၖ-ၙၞ-ၠၢ-ၤၧ-ၭၱ-ၴႂ-ႍႏ-ႝ፝-፟፩-፱ᜒ-᜕ᜲ-᜴ᝒᝓᝲᝳ឴-៓៝០-៩᠋-᠍᠏-᠙ᢩᤠ-ᤫᤰ-᤻᥆-᥏᧐-᧚ᨗ-ᨛᩕ-ᩞ᩠-᩿᩼-᪉᪐-᪙᪰-᪽ᪿ-ᫎᬀ-ᬄ᬴-᭄᭐-᭙᭫-᭳ᮀ-ᮂᮡ-ᮭ᮰-᮹᯦-᯳ᰤ-᰷᱀-᱉᱐-᱙᳐-᳔᳒-᳨᳭᳴᳷-᳹᷀-᷿‌‍‿⁀⁔⃐-⃥⃜⃡-⃰⳯-⵿⳱ⷠ-〪ⷿ-゙゚〯・꘠-꘩꙯ꙴ-꙽ꚞꚟ꛰꛱ꠂ꠆ꠋꠣ-ꠧ꠬ꢀꢁꢴ-ꣅ꣐-꣙꣠-꣱ꣿ-꤉ꤦ-꤭ꥇ-꥓ꦀ-ꦃ꦳-꧀꧐-꧙ꧥ꧰-꧹ꨩ-ꨶꩃꩌꩍ꩐-꩙ꩻ-ꩽꪰꪲ-ꪴꪷꪸꪾ꪿꫁ꫫ-ꫯꫵ꫶ꯣ-ꯪ꯬꯭꯰-꯹ﬞ︀-️︠-︯︳︴﹍-﹏０-９＿･";
-var nonASCIIidentifierStartChars = "ªµºÀ-ÖØ-öø-ˁˆ-ˑˠ-ˤˬˮͰ-ʹͶͷͺ-ͽͿΆΈ-ΊΌΎ-ΡΣ-ϵϷ-ҁҊ-ԯԱ-Ֆՙՠ-ֈא-תׯ-ײؠ-يٮٯٱ-ۓەۥۦۮۯۺ-ۼۿܐܒ-ܯݍ-ޥޱߊ-ߪߴߵߺࠀ-ࠕࠚࠤࠨࡀ-ࡘࡠ-ࡪࡰ-ࢇࢉ-ࢎࢠ-ࣉऄ-हऽॐक़-ॡॱ-ঀঅ-ঌএঐও-নপ-রলশ-হঽৎড়ঢ়য়-ৡৰৱৼਅ-ਊਏਐਓ-ਨਪ-ਰਲਲ਼ਵਸ਼ਸਹਖ਼-ੜਫ਼ੲ-ੴઅ-ઍએ-ઑઓ-નપ-રલળવ-હઽૐૠૡૹଅ-ଌଏଐଓ-ନପ-ରଲଳଵ-ହଽଡ଼ଢ଼ୟ-ୡୱஃஅ-ஊஎ-ஐஒ-கஙசஜஞடணதந-பம-ஹௐఅ-ఌఎ-ఐఒ-నప-హఽౘ-ౚౝౠౡಀಅ-ಌಎ-ಐಒ-ನಪ-ಳವ-ಹಽೝೞೠೡೱೲഄ-ഌഎ-ഐഒ-ഺഽൎൔ-ൖൟ-ൡൺ-ൿඅ-ඖක-නඳ-රලව-ෆก-ะาำเ-ๆກຂຄຆ-ຊຌ-ຣລວ-ະາຳຽເ-ໄໆໜ-ໟༀཀ-ཇཉ-ཬྈ-ྌက-ဪဿၐ-ၕၚ-ၝၡၥၦၮ-ၰၵ-ႁႎႠ-ჅჇჍა-ჺჼ-ቈቊ-ቍቐ-ቖቘቚ-ቝበ-ኈኊ-ኍነ-ኰኲ-ኵኸ-ኾዀዂ-ዅወ-ዖዘ-ጐጒ-ጕጘ-ፚᎀ-ᎏᎠ-Ᏽᏸ-ᏽᐁ-ᙬᙯ-ᙿᚁ-ᚚᚠ-ᛪᛮ-ᛸᜀ-ᜑᜟ-ᜱᝀ-ᝑᝠ-ᝬᝮ-ᝰក-ឳៗៜᠠ-ᡸᢀ-ᢨᢪᢰ-ᣵᤀ-ᤞᥐ-ᥭᥰ-ᥴᦀ-ᦫᦰ-ᧉᨀ-ᨖᨠ-ᩔᪧᬅ-ᬳᭅ-ᭌᮃ-ᮠᮮᮯᮺ-ᯥᰀ-ᰣᱍ-ᱏᱚ-ᱽᲀ-ᲊᲐ-ᲺᲽ-Ჿᳩ-ᳬᳮ-ᳳᳵᳶᳺᴀ-ᶿḀ-ἕἘ-Ἕἠ-ὅὈ-Ὅὐ-ὗὙὛὝὟ-ώᾀ-ᾴᾶ-ᾼιῂ-ῄῆ-ῌῐ-ΐῖ-Ίῠ-Ῥῲ-ῴῶ-ῼⁱⁿₐ-ₜℂℇℊ-ℓℕ℘-ℝℤΩℨK-ℹℼ-ℿⅅ-ⅉⅎⅠ-ↈⰀ-ⳤⳫ-ⳮⳲⳳⴀ-ⴥⴧⴭⴰ-ⵧⵯⶀ-ⶖⶠ-ⶦⶨ-ⶮⶰ-ⶶⶸ-ⶾⷀ-ⷆⷈ-ⷎⷐ-ⷖⷘ-ⷞ々-〇〡-〩〱-〵〸-〼ぁ-ゖ゛-ゟァ-ヺー-ヿㄅ-ㄯㄱ-ㆎㆠ-ㆿㇰ-ㇿ㐀-䶿一-ꒌꓐ-ꓽꔀ-ꘌꘐ-ꘟꘪꘫꙀ-ꙮꙿ-ꚝꚠ-ꛯꜗ-ꜟꜢ-ꞈꞋ-ꟍꟐꟑꟓꟕ-Ƛꟲ-ꠁꠃ-ꠅꠇ-ꠊꠌ-ꠢꡀ-ꡳꢂ-ꢳꣲ-ꣷꣻꣽꣾꤊ-ꤥꤰ-ꥆꥠ-ꥼꦄ-ꦲꧏꧠ-ꧤꧦ-ꧯꧺ-ꧾꨀ-ꨨꩀ-ꩂꩄ-ꩋꩠ-ꩶꩺꩾ-ꪯꪱꪵꪶꪹ-ꪽꫀꫂꫛ-ꫝꫠ-ꫪꫲ-ꫴꬁ-ꬆꬉ-ꬎꬑ-ꬖꬠ-ꬦꬨ-ꬮꬰ-ꭚꭜ-ꭩꭰ-ꯢ가-힣ힰ-ퟆퟋ-ퟻ豈-舘並-龎ﬀ-ﬆﬓ-ﬗיִײַ-ﬨשׁ-זּטּ-לּמּנּסּףּפּצּ-ﮱﯓ-ﴽﵐ-ﶏﶒ-ﷇﷰ-ﷻﹰ-ﹴﹶ-ﻼＡ-Ｚａ-ｚｦ-ﾾￂ-ￇￊ-ￏￒ-ￗￚ-ￜ";
+var nonASCIIidentifierChars = "\u200C\u200D\xB7\u0300-\u036F\u0387\u0483-\u0487\u0591-\u05BD\u05BF\u05C1\u05C2\u05C4\u05C5\u05C7\u0610-\u061A\u064B-\u0669\u0670\u06D6-\u06DC\u06DF-\u06E4\u06E7\u06E8\u06EA-\u06ED\u06F0-\u06F9\u0711\u0730-\u074A\u07A6-\u07B0\u07C0-\u07C9\u07EB-\u07F3\u07FD\u0816-\u0819\u081B-\u0823\u0825-\u0827\u0829-\u082D\u0859-\u085B\u0897-\u089F\u08CA-\u08E1\u08E3-\u0903\u093A-\u093C\u093E-\u094F\u0951-\u0957\u0962\u0963\u0966-\u096F\u0981-\u0983\u09BC\u09BE-\u09C4\u09C7\u09C8\u09CB-\u09CD\u09D7\u09E2\u09E3\u09E6-\u09EF\u09FE\u0A01-\u0A03\u0A3C\u0A3E-\u0A42\u0A47\u0A48\u0A4B-\u0A4D\u0A51\u0A66-\u0A71\u0A75\u0A81-\u0A83\u0ABC\u0ABE-\u0AC5\u0AC7-\u0AC9\u0ACB-\u0ACD\u0AE2\u0AE3\u0AE6-\u0AEF\u0AFA-\u0AFF\u0B01-\u0B03\u0B3C\u0B3E-\u0B44\u0B47\u0B48\u0B4B-\u0B4D\u0B55-\u0B57\u0B62\u0B63\u0B66-\u0B6F\u0B82\u0BBE-\u0BC2\u0BC6-\u0BC8\u0BCA-\u0BCD\u0BD7\u0BE6-\u0BEF\u0C00-\u0C04\u0C3C\u0C3E-\u0C44\u0C46-\u0C48\u0C4A-\u0C4D\u0C55\u0C56\u0C62\u0C63\u0C66-\u0C6F\u0C81-\u0C83\u0CBC\u0CBE-\u0CC4\u0CC6-\u0CC8\u0CCA-\u0CCD\u0CD5\u0CD6\u0CE2\u0CE3\u0CE6-\u0CEF\u0CF3\u0D00-\u0D03\u0D3B\u0D3C\u0D3E-\u0D44\u0D46-\u0D48\u0D4A-\u0D4D\u0D57\u0D62\u0D63\u0D66-\u0D6F\u0D81-\u0D83\u0DCA\u0DCF-\u0DD4\u0DD6\u0DD8-\u0DDF\u0DE6-\u0DEF\u0DF2\u0DF3\u0E31\u0E34-\u0E3A\u0E47-\u0E4E\u0E50-\u0E59\u0EB1\u0EB4-\u0EBC\u0EC8-\u0ECE\u0ED0-\u0ED9\u0F18\u0F19\u0F20-\u0F29\u0F35\u0F37\u0F39\u0F3E\u0F3F\u0F71-\u0F84\u0F86\u0F87\u0F8D-\u0F97\u0F99-\u0FBC\u0FC6\u102B-\u103E\u1040-\u1049\u1056-\u1059\u105E-\u1060\u1062-\u1064\u1067-\u106D\u1071-\u1074\u1082-\u108D\u108F-\u109D\u135D-\u135F\u1369-\u1371\u1712-\u1715\u1732-\u1734\u1752\u1753\u1772\u1773\u17B4-\u17D3\u17DD\u17E0-\u17E9\u180B-\u180D\u180F-\u1819\u18A9\u1920-\u192B\u1930-\u193B\u1946-\u194F\u19D0-\u19DA\u1A17-\u1A1B\u1A55-\u1A5E\u1A60-\u1A7C\u1A7F-\u1A89\u1A90-\u1A99\u1AB0-\u1ABD\u1ABF-\u1ACE\u1B00-\u1B04\u1B34-\u1B44\u1B50-\u1B59\u1B6B-\u1B73\u1B80-\u1B82\u1BA1-\u1BAD\u1BB0-\u1BB9\u1BE6-\u1BF3\u1C24-\u1C37\u1C40-\u1C49\u1C50-\u1C59\u1CD0-\u1CD2\u1CD4-\u1CE8\u1CED\u1CF4\u1CF7-\u1CF9\u1DC0-\u1DFF\u200C\u200D\u203F\u2040\u2054\u20D0-\u20DC\u20E1\u20E5-\u20F0\u2CEF-\u2CF1\u2D7F\u2DE0-\u2DFF\u302A-\u302F\u3099\u309A\u30FB\uA620-\uA629\uA66F\uA674-\uA67D\uA69E\uA69F\uA6F0\uA6F1\uA802\uA806\uA80B\uA823-\uA827\uA82C\uA880\uA881\uA8B4-\uA8C5\uA8D0-\uA8D9\uA8E0-\uA8F1\uA8FF-\uA909\uA926-\uA92D\uA947-\uA953\uA980-\uA983\uA9B3-\uA9C0\uA9D0-\uA9D9\uA9E5\uA9F0-\uA9F9\uAA29-\uAA36\uAA43\uAA4C\uAA4D\uAA50-\uAA59\uAA7B-\uAA7D\uAAB0\uAAB2-\uAAB4\uAAB7\uAAB8\uAABE\uAABF\uAAC1\uAAEB-\uAAEF\uAAF5\uAAF6\uABE3-\uABEA\uABEC\uABED\uABF0-\uABF9\uFB1E\uFE00-\uFE0F\uFE20-\uFE2F\uFE33\uFE34\uFE4D-\uFE4F\uFF10-\uFF19\uFF3F\uFF65";
+var nonASCIIidentifierStartChars = "\xAA\xB5\xBA\xC0-\xD6\xD8-\xF6\xF8-\u02C1\u02C6-\u02D1\u02E0-\u02E4\u02EC\u02EE\u0370-\u0374\u0376\u0377\u037A-\u037D\u037F\u0386\u0388-\u038A\u038C\u038E-\u03A1\u03A3-\u03F5\u03F7-\u0481\u048A-\u052F\u0531-\u0556\u0559\u0560-\u0588\u05D0-\u05EA\u05EF-\u05F2\u0620-\u064A\u066E\u066F\u0671-\u06D3\u06D5\u06E5\u06E6\u06EE\u06EF\u06FA-\u06FC\u06FF\u0710\u0712-\u072F\u074D-\u07A5\u07B1\u07CA-\u07EA\u07F4\u07F5\u07FA\u0800-\u0815\u081A\u0824\u0828\u0840-\u0858\u0860-\u086A\u0870-\u0887\u0889-\u088E\u08A0-\u08C9\u0904-\u0939\u093D\u0950\u0958-\u0961\u0971-\u0980\u0985-\u098C\u098F\u0990\u0993-\u09A8\u09AA-\u09B0\u09B2\u09B6-\u09B9\u09BD\u09CE\u09DC\u09DD\u09DF-\u09E1\u09F0\u09F1\u09FC\u0A05-\u0A0A\u0A0F\u0A10\u0A13-\u0A28\u0A2A-\u0A30\u0A32\u0A33\u0A35\u0A36\u0A38\u0A39\u0A59-\u0A5C\u0A5E\u0A72-\u0A74\u0A85-\u0A8D\u0A8F-\u0A91\u0A93-\u0AA8\u0AAA-\u0AB0\u0AB2\u0AB3\u0AB5-\u0AB9\u0ABD\u0AD0\u0AE0\u0AE1\u0AF9\u0B05-\u0B0C\u0B0F\u0B10\u0B13-\u0B28\u0B2A-\u0B30\u0B32\u0B33\u0B35-\u0B39\u0B3D\u0B5C\u0B5D\u0B5F-\u0B61\u0B71\u0B83\u0B85-\u0B8A\u0B8E-\u0B90\u0B92-\u0B95\u0B99\u0B9A\u0B9C\u0B9E\u0B9F\u0BA3\u0BA4\u0BA8-\u0BAA\u0BAE-\u0BB9\u0BD0\u0C05-\u0C0C\u0C0E-\u0C10\u0C12-\u0C28\u0C2A-\u0C39\u0C3D\u0C58-\u0C5A\u0C5D\u0C60\u0C61\u0C80\u0C85-\u0C8C\u0C8E-\u0C90\u0C92-\u0CA8\u0CAA-\u0CB3\u0CB5-\u0CB9\u0CBD\u0CDD\u0CDE\u0CE0\u0CE1\u0CF1\u0CF2\u0D04-\u0D0C\u0D0E-\u0D10\u0D12-\u0D3A\u0D3D\u0D4E\u0D54-\u0D56\u0D5F-\u0D61\u0D7A-\u0D7F\u0D85-\u0D96\u0D9A-\u0DB1\u0DB3-\u0DBB\u0DBD\u0DC0-\u0DC6\u0E01-\u0E30\u0E32\u0E33\u0E40-\u0E46\u0E81\u0E82\u0E84\u0E86-\u0E8A\u0E8C-\u0EA3\u0EA5\u0EA7-\u0EB0\u0EB2\u0EB3\u0EBD\u0EC0-\u0EC4\u0EC6\u0EDC-\u0EDF\u0F00\u0F40-\u0F47\u0F49-\u0F6C\u0F88-\u0F8C\u1000-\u102A\u103F\u1050-\u1055\u105A-\u105D\u1061\u1065\u1066\u106E-\u1070\u1075-\u1081\u108E\u10A0-\u10C5\u10C7\u10CD\u10D0-\u10FA\u10FC-\u1248\u124A-\u124D\u1250-\u1256\u1258\u125A-\u125D\u1260-\u1288\u128A-\u128D\u1290-\u12B0\u12B2-\u12B5\u12B8-\u12BE\u12C0\u12C2-\u12C5\u12C8-\u12D6\u12D8-\u1310\u1312-\u1315\u1318-\u135A\u1380-\u138F\u13A0-\u13F5\u13F8-\u13FD\u1401-\u166C\u166F-\u167F\u1681-\u169A\u16A0-\u16EA\u16EE-\u16F8\u1700-\u1711\u171F-\u1731\u1740-\u1751\u1760-\u176C\u176E-\u1770\u1780-\u17B3\u17D7\u17DC\u1820-\u1878\u1880-\u18A8\u18AA\u18B0-\u18F5\u1900-\u191E\u1950-\u196D\u1970-\u1974\u1980-\u19AB\u19B0-\u19C9\u1A00-\u1A16\u1A20-\u1A54\u1AA7\u1B05-\u1B33\u1B45-\u1B4C\u1B83-\u1BA0\u1BAE\u1BAF\u1BBA-\u1BE5\u1C00-\u1C23\u1C4D-\u1C4F\u1C5A-\u1C7D\u1C80-\u1C8A\u1C90-\u1CBA\u1CBD-\u1CBF\u1CE9-\u1CEC\u1CEE-\u1CF3\u1CF5\u1CF6\u1CFA\u1D00-\u1DBF\u1E00-\u1F15\u1F18-\u1F1D\u1F20-\u1F45\u1F48-\u1F4D\u1F50-\u1F57\u1F59\u1F5B\u1F5D\u1F5F-\u1F7D\u1F80-\u1FB4\u1FB6-\u1FBC\u1FBE\u1FC2-\u1FC4\u1FC6-\u1FCC\u1FD0-\u1FD3\u1FD6-\u1FDB\u1FE0-\u1FEC\u1FF2-\u1FF4\u1FF6-\u1FFC\u2071\u207F\u2090-\u209C\u2102\u2107\u210A-\u2113\u2115\u2118-\u211D\u2124\u2126\u2128\u212A-\u2139\u213C-\u213F\u2145-\u2149\u214E\u2160-\u2188\u2C00-\u2CE4\u2CEB-\u2CEE\u2CF2\u2CF3\u2D00-\u2D25\u2D27\u2D2D\u2D30-\u2D67\u2D6F\u2D80-\u2D96\u2DA0-\u2DA6\u2DA8-\u2DAE\u2DB0-\u2DB6\u2DB8-\u2DBE\u2DC0-\u2DC6\u2DC8-\u2DCE\u2DD0-\u2DD6\u2DD8-\u2DDE\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303C\u3041-\u3096\u309B-\u309F\u30A1-\u30FA\u30FC-\u30FF\u3105-\u312F\u3131-\u318E\u31A0-\u31BF\u31F0-\u31FF\u3400-\u4DBF\u4E00-\uA48C\uA4D0-\uA4FD\uA500-\uA60C\uA610-\uA61F\uA62A\uA62B\uA640-\uA66E\uA67F-\uA69D\uA6A0-\uA6EF\uA717-\uA71F\uA722-\uA788\uA78B-\uA7CD\uA7D0\uA7D1\uA7D3\uA7D5-\uA7DC\uA7F2-\uA801\uA803-\uA805\uA807-\uA80A\uA80C-\uA822\uA840-\uA873\uA882-\uA8B3\uA8F2-\uA8F7\uA8FB\uA8FD\uA8FE\uA90A-\uA925\uA930-\uA946\uA960-\uA97C\uA984-\uA9B2\uA9CF\uA9E0-\uA9E4\uA9E6-\uA9EF\uA9FA-\uA9FE\uAA00-\uAA28\uAA40-\uAA42\uAA44-\uAA4B\uAA60-\uAA76\uAA7A\uAA7E-\uAAAF\uAAB1\uAAB5\uAAB6\uAAB9-\uAABD\uAAC0\uAAC2\uAADB-\uAADD\uAAE0-\uAAEA\uAAF2-\uAAF4\uAB01-\uAB06\uAB09-\uAB0E\uAB11-\uAB16\uAB20-\uAB26\uAB28-\uAB2E\uAB30-\uAB5A\uAB5C-\uAB69\uAB70-\uABE2\uAC00-\uD7A3\uD7B0-\uD7C6\uD7CB-\uD7FB\uF900-\uFA6D\uFA70-\uFAD9\uFB00-\uFB06\uFB13-\uFB17\uFB1D\uFB1F-\uFB28\uFB2A-\uFB36\uFB38-\uFB3C\uFB3E\uFB40\uFB41\uFB43\uFB44\uFB46-\uFBB1\uFBD3-\uFD3D\uFD50-\uFD8F\uFD92-\uFDC7\uFDF0-\uFDFB\uFE70-\uFE74\uFE76-\uFEFC\uFF21-\uFF3A\uFF41-\uFF5A\uFF66-\uFFBE\uFFC2-\uFFC7\uFFCA-\uFFCF\uFFD2-\uFFD7\uFFDA-\uFFDC";
 var reservedWords = {
   3: "abstract boolean byte char class double enum export extends final float goto implements import int interface long native package private protected public short static super synchronized throws transient volatile",
   5: "class enum extends super const export import",
@@ -452,7 +434,8 @@ var TokenType = function TokenType2(label, conf) {
 function binop(name, prec) {
   return new TokenType(name, { beforeExpr: true, binop: prec });
 }
-var beforeExpr = { beforeExpr: true }, startsExpr = { startsExpr: true };
+var beforeExpr = { beforeExpr: true };
+var startsExpr = { startsExpr: true };
 var keywords = {};
 function kw(name, options) {
   if (options === void 0) options = {};
@@ -763,11 +746,26 @@ function pushComment(options, array) {
     array.push(comment);
   };
 }
-var SCOPE_TOP = 1, SCOPE_FUNCTION = 2, SCOPE_ASYNC = 4, SCOPE_GENERATOR = 8, SCOPE_ARROW = 16, SCOPE_SIMPLE_CATCH = 32, SCOPE_SUPER = 64, SCOPE_DIRECT_SUPER = 128, SCOPE_CLASS_STATIC_BLOCK = 256, SCOPE_CLASS_FIELD_INIT = 512, SCOPE_VAR = SCOPE_TOP | SCOPE_FUNCTION | SCOPE_CLASS_STATIC_BLOCK;
+var SCOPE_TOP = 1;
+var SCOPE_FUNCTION = 2;
+var SCOPE_ASYNC = 4;
+var SCOPE_GENERATOR = 8;
+var SCOPE_ARROW = 16;
+var SCOPE_SIMPLE_CATCH = 32;
+var SCOPE_SUPER = 64;
+var SCOPE_DIRECT_SUPER = 128;
+var SCOPE_CLASS_STATIC_BLOCK = 256;
+var SCOPE_CLASS_FIELD_INIT = 512;
+var SCOPE_VAR = SCOPE_TOP | SCOPE_FUNCTION | SCOPE_CLASS_STATIC_BLOCK;
 function functionFlags(async, generator) {
   return SCOPE_FUNCTION | (async ? SCOPE_ASYNC : 0) | (generator ? SCOPE_GENERATOR : 0);
 }
-var BIND_NONE = 0, BIND_VAR = 1, BIND_LEXICAL = 2, BIND_FUNCTION = 3, BIND_SIMPLE_CATCH = 4, BIND_OUTSIDE = 5;
+var BIND_NONE = 0;
+var BIND_VAR = 1;
+var BIND_LEXICAL = 2;
+var BIND_FUNCTION = 3;
+var BIND_SIMPLE_CATCH = 4;
+var BIND_OUTSIDE = 5;
 var Parser = function Parser2(options, input, startPos) {
   this.options = options = getOptions(options);
   this.sourceFile = options.sourceFile;
@@ -1019,12 +1017,12 @@ pp$9.isSimpleAssignTarget = function(expr) {
 };
 var pp$8 = Parser.prototype;
 pp$8.parseTopLevel = function(node) {
-  var exports$1 = /* @__PURE__ */ Object.create(null);
+  var exports = /* @__PURE__ */ Object.create(null);
   if (!node.body) {
     node.body = [];
   }
   while (this.type !== types$1.eof) {
-    var stmt = this.parseStatement(null, true, exports$1);
+    var stmt = this.parseStatement(null, true, exports);
     node.body.push(stmt);
   }
   if (this.inModule) {
@@ -1038,7 +1036,8 @@ pp$8.parseTopLevel = function(node) {
   node.sourceType = this.options.sourceType;
   return this.finishNode(node, "Program");
 };
-var loopLabel = { kind: "loop" }, switchLabel = { kind: "switch" };
+var loopLabel = { kind: "loop" };
+var switchLabel = { kind: "switch" };
 pp$8.isLet = function(context) {
   if (this.options.ecmaVersion < 6 || !this.isContextual("let")) {
     return false;
@@ -1117,7 +1116,7 @@ pp$8.isAwaitUsing = function(isFor) {
 pp$8.isUsing = function(isFor) {
   return this.isUsingKeyword(false, isFor);
 };
-pp$8.parseStatement = function(context, topLevel, exports$1) {
+pp$8.parseStatement = function(context, topLevel, exports) {
   var starttype = this.type, node = this.startNode(), kind;
   if (this.isLet(context)) {
     starttype = types$1._var;
@@ -1186,7 +1185,7 @@ pp$8.parseStatement = function(context, topLevel, exports$1) {
           this.raise(this.start, "'import' and 'export' may appear only with 'sourceType: module'");
         }
       }
-      return starttype === types$1._import ? this.parseImport(node) : this.parseExport(node, exports$1);
+      return starttype === types$1._import ? this.parseImport(node) : this.parseExport(node, exports);
     // If the statement does not start with a statement keyword or a
     // brace, it's an ExpressionStatement or LabeledStatement. We
     // simply start parsing an expression, and afterwards, if the
@@ -1595,7 +1594,9 @@ pp$8.parseVarId = function(decl, kind) {
   decl.id = kind === "using" || kind === "await using" ? this.parseIdent() : this.parseBindingAtom();
   this.checkLValPattern(decl.id, kind === "var" ? BIND_VAR : BIND_LEXICAL, false);
 };
-var FUNC_STATEMENT = 1, FUNC_HANGING_STATEMENT = 2, FUNC_NULLABLE_ID = 4;
+var FUNC_STATEMENT = 1;
+var FUNC_HANGING_STATEMENT = 2;
+var FUNC_NULLABLE_ID = 4;
 pp$8.parseFunction = function(node, statement, allowExpressionBody, isAsync, forInit) {
   this.initFunction(node);
   if (this.options.ecmaVersion >= 9 || this.options.ecmaVersion >= 6 && !isAsync) {
@@ -1859,11 +1860,11 @@ function checkKeyName(node, name) {
   var key = node.key;
   return !computed && (key.type === "Identifier" && key.name === name || key.type === "Literal" && key.value === name);
 }
-pp$8.parseExportAllDeclaration = function(node, exports$1) {
+pp$8.parseExportAllDeclaration = function(node, exports) {
   if (this.options.ecmaVersion >= 11) {
     if (this.eatContextual("as")) {
       node.exported = this.parseModuleExportName();
-      this.checkExport(exports$1, node.exported, this.lastTokStart);
+      this.checkExport(exports, node.exported, this.lastTokStart);
     } else {
       node.exported = null;
     }
@@ -1879,22 +1880,22 @@ pp$8.parseExportAllDeclaration = function(node, exports$1) {
   this.semicolon();
   return this.finishNode(node, "ExportAllDeclaration");
 };
-pp$8.parseExport = function(node, exports$1) {
+pp$8.parseExport = function(node, exports) {
   this.next();
   if (this.eat(types$1.star)) {
-    return this.parseExportAllDeclaration(node, exports$1);
+    return this.parseExportAllDeclaration(node, exports);
   }
   if (this.eat(types$1._default)) {
-    this.checkExport(exports$1, "default", this.lastTokStart);
+    this.checkExport(exports, "default", this.lastTokStart);
     node.declaration = this.parseExportDefaultDeclaration();
     return this.finishNode(node, "ExportDefaultDeclaration");
   }
   if (this.shouldParseExportStatement()) {
     node.declaration = this.parseExportDeclaration(node);
     if (node.declaration.type === "VariableDeclaration") {
-      this.checkVariableExport(exports$1, node.declaration.declarations);
+      this.checkVariableExport(exports, node.declaration.declarations);
     } else {
-      this.checkExport(exports$1, node.declaration.id, node.declaration.id.start);
+      this.checkExport(exports, node.declaration.id, node.declaration.id.start);
     }
     node.specifiers = [];
     node.source = null;
@@ -1903,7 +1904,7 @@ pp$8.parseExport = function(node, exports$1) {
     }
   } else {
     node.declaration = null;
-    node.specifiers = this.parseExportSpecifiers(exports$1);
+    node.specifiers = this.parseExportSpecifiers(exports);
     if (this.eatContextual("from")) {
       if (this.type !== types$1.string) {
         this.unexpected();
@@ -1951,66 +1952,66 @@ pp$8.parseExportDefaultDeclaration = function() {
     return declaration;
   }
 };
-pp$8.checkExport = function(exports$1, name, pos) {
-  if (!exports$1) {
+pp$8.checkExport = function(exports, name, pos) {
+  if (!exports) {
     return;
   }
   if (typeof name !== "string") {
     name = name.type === "Identifier" ? name.name : name.value;
   }
-  if (hasOwn(exports$1, name)) {
+  if (hasOwn(exports, name)) {
     this.raiseRecoverable(pos, "Duplicate export '" + name + "'");
   }
-  exports$1[name] = true;
+  exports[name] = true;
 };
-pp$8.checkPatternExport = function(exports$1, pat) {
+pp$8.checkPatternExport = function(exports, pat) {
   var type = pat.type;
   if (type === "Identifier") {
-    this.checkExport(exports$1, pat, pat.start);
+    this.checkExport(exports, pat, pat.start);
   } else if (type === "ObjectPattern") {
     for (var i = 0, list = pat.properties; i < list.length; i += 1) {
       var prop = list[i];
-      this.checkPatternExport(exports$1, prop);
+      this.checkPatternExport(exports, prop);
     }
   } else if (type === "ArrayPattern") {
     for (var i$1 = 0, list$1 = pat.elements; i$1 < list$1.length; i$1 += 1) {
       var elt = list$1[i$1];
       if (elt) {
-        this.checkPatternExport(exports$1, elt);
+        this.checkPatternExport(exports, elt);
       }
     }
   } else if (type === "Property") {
-    this.checkPatternExport(exports$1, pat.value);
+    this.checkPatternExport(exports, pat.value);
   } else if (type === "AssignmentPattern") {
-    this.checkPatternExport(exports$1, pat.left);
+    this.checkPatternExport(exports, pat.left);
   } else if (type === "RestElement") {
-    this.checkPatternExport(exports$1, pat.argument);
+    this.checkPatternExport(exports, pat.argument);
   }
 };
-pp$8.checkVariableExport = function(exports$1, decls) {
-  if (!exports$1) {
+pp$8.checkVariableExport = function(exports, decls) {
+  if (!exports) {
     return;
   }
   for (var i = 0, list = decls; i < list.length; i += 1) {
     var decl = list[i];
-    this.checkPatternExport(exports$1, decl.id);
+    this.checkPatternExport(exports, decl.id);
   }
 };
 pp$8.shouldParseExportStatement = function() {
   return this.type.keyword === "var" || this.type.keyword === "const" || this.type.keyword === "class" || this.type.keyword === "function" || this.isLet() || this.isAsyncFunction();
 };
-pp$8.parseExportSpecifier = function(exports$1) {
+pp$8.parseExportSpecifier = function(exports) {
   var node = this.startNode();
   node.local = this.parseModuleExportName();
   node.exported = this.eatContextual("as") ? this.parseModuleExportName() : node.local;
   this.checkExport(
-    exports$1,
+    exports,
     node.exported,
     node.exported.start
   );
   return this.finishNode(node, "ExportSpecifier");
 };
-pp$8.parseExportSpecifiers = function(exports$1) {
+pp$8.parseExportSpecifiers = function(exports) {
   var nodes = [], first = true;
   this.expect(types$1.braceL);
   while (!this.eat(types$1.braceR)) {
@@ -2022,7 +2023,7 @@ pp$8.parseExportSpecifiers = function(exports$1) {
     } else {
       first = false;
     }
-    nodes.push(this.parseExportSpecifier(exports$1));
+    nodes.push(this.parseExportSpecifier(exports));
   }
   return nodes;
 };
@@ -3776,10 +3777,13 @@ function buildUnicodeData(ecmaVersion) {
   d.nonBinary.sc = d.nonBinary.Script;
   d.nonBinary.scx = d.nonBinary.Script_Extensions;
 }
-for (var i = 0, list = [9, 10, 11, 12, 13, 14]; i < list.length; i += 1) {
-  var ecmaVersion = list[i];
+for (i = 0, list = [9, 10, 11, 12, 13, 14]; i < list.length; i += 1) {
+  ecmaVersion = list[i];
   buildUnicodeData(ecmaVersion);
 }
+var ecmaVersion;
+var i;
+var list;
 var pp$1 = Parser.prototype;
 var BranchID = function BranchID2(parent, base) {
   this.parent = parent;
@@ -5939,10 +5943,12 @@ Parser.acorn = {
   lineBreakG,
   nonASCIIwhitespace
 };
-function parse$1(input, options) {
+function parse3(input, options) {
   return Parser.parse(input, options);
 }
-const validateScopes = (program, allowedGlobals = []) => {
+
+// ../core/src/parser.ts
+var validateScopes = (program, allowedGlobals = []) => {
   const errors = [];
   const globals = new Set(allowedGlobals);
   const scopes = [/* @__PURE__ */ new Set()];
@@ -5957,14 +5963,16 @@ const validateScopes = (program, allowedGlobals = []) => {
   };
   const declarePattern = (p) => {
     if (p.type === "Identifier") declare(p.name);
+    else if (p.type === "AssignmentPattern") declarePattern(p.left);
     else if (p.type === "RestElement") declarePattern(p.argument);
     else if (p.type === "ArrayPattern") p.elements.forEach(declarePattern);
-    else p.properties.forEach((prop) => {
+    else if (p.type === "ObjectPattern") p.properties.forEach((prop) => {
       if (prop.type === "RestElement") declarePattern(prop.argument);
       else declarePattern(prop.value);
     });
   };
   const visitExpr = (e) => {
+    if (!e) return;
     switch (e.type) {
       case "Identifier":
         checkIdent(e.name);
@@ -5975,7 +5983,7 @@ const validateScopes = (program, allowedGlobals = []) => {
         visitExpr(e.argument);
         return;
       case "ArrayExpression":
-        e.elements.forEach((el2) => visitExpr(el2));
+        e.elements.forEach((el2) => el2 && visitExpr(el2));
         return;
       case "ObjectExpression":
         e.properties.forEach((p) => {
@@ -5985,6 +5993,10 @@ const validateScopes = (program, allowedGlobals = []) => {
         return;
       case "AwaitExpression":
         visitExpr(e.argument);
+        return;
+      case "NewExpression":
+        visitExpr(e.callee);
+        e.arguments.forEach((a) => visitExpr(a));
         return;
       case "CallExpression":
         visitExpr(e.callee);
@@ -6054,7 +6066,7 @@ const validateScopes = (program, allowedGlobals = []) => {
         return;
       case "ForStatement": {
         enter();
-        if (Array.isArray(s.init)) s.init.forEach(visitVarDecl);
+        if (s.init?.type === "VariableDeclaration") s.init.declarations.forEach(visitVarDecl);
         else if (s.init) visitExpr(s.init);
         if (s.test) visitExpr(s.test);
         if (s.update) visitExpr(s.update);
@@ -6065,7 +6077,7 @@ const validateScopes = (program, allowedGlobals = []) => {
       case "ForInStatement":
       case "ForOfStatement": {
         enter();
-        if (Array.isArray(s.left)) s.left.forEach(visitVarDecl);
+        if (s.left.type === "VariableDeclaration") s.left.declarations.forEach(visitVarDecl);
         else visitExpr(s.left);
         visitExpr(s.right);
         visitStmt(s.body);
@@ -6080,23 +6092,25 @@ const validateScopes = (program, allowedGlobals = []) => {
   program.body.forEach(visitStmt);
   return errors;
 };
-const validateNoPrototype = (program) => {
+var validateNoPrototype = (program) => {
   const errors = [];
   const forbiddenMembers = /* @__PURE__ */ new Set(["prototype", "constructor", "__proto__"]);
   const visitExpr = (e) => {
+    if (!e) return;
     switch (e.type) {
       case "MemberExpression":
         if (!e.computed && e.property.type === "Identifier" && forbiddenMembers.has(e.property.name)) {
           errors.push("prototype access");
-        }
-        if (e.computed && !(e.property.type === "Literal" && typeof e.property.value === "number")) {
-          errors.push("only numeric literal indexing allowed");
         }
         visitExpr(e.object);
         if (e.computed) visitExpr(e.property);
         return;
       case "SpreadElement":
         visitExpr(e.argument);
+        return;
+      case "NewExpression":
+        visitExpr(e.callee);
+        e.arguments.forEach((a) => visitExpr(a));
         return;
       case "CallExpression":
         visitExpr(e.callee);
@@ -6106,7 +6120,7 @@ const validateNoPrototype = (program) => {
         visitExpr(e.argument);
         return;
       case "ArrayExpression":
-        e.elements.forEach((el2) => visitExpr(el2));
+        e.elements.forEach((el2) => el2 && visitExpr(el2));
         return;
       case "ObjectExpression":
         e.properties.forEach((p) => {
@@ -6167,7 +6181,7 @@ const validateNoPrototype = (program) => {
         visitStmt(s.body);
         return;
       case "ForStatement":
-        if (Array.isArray(s.init)) s.init.forEach((d) => d.init && visitExpr(d.init));
+        if (s.init?.type === "VariableDeclaration") s.init.declarations.forEach((d) => d.init && visitExpr(d.init));
         else if (s.init) visitExpr(s.init);
         if (s.test) visitExpr(s.test);
         if (s.update) visitExpr(s.update);
@@ -6175,7 +6189,7 @@ const validateNoPrototype = (program) => {
         return;
       case "ForInStatement":
       case "ForOfStatement":
-        if (Array.isArray(s.left)) s.left.forEach((d) => d.init && visitExpr(d.init));
+        if (s.left.type === "VariableDeclaration") s.left.declarations.forEach((d) => d.init && visitExpr(d.init));
         else visitExpr(s.left);
         visitExpr(s.right);
         visitStmt(s.body);
@@ -6188,330 +6202,24 @@ const validateNoPrototype = (program) => {
   program.body.forEach(visitStmt);
   return errors;
 };
-const nodePos = (n) => typeof n.start === "number" ? n.start : -1;
-const unsupported = (n, msg) => {
-  throw new Error(`${msg} at ${nodePos(n)}`);
-};
-const expectStringEnum = (node, value, allowed, label) => {
-  if (typeof value !== "string" || !allowed.includes(value)) {
-    unsupported(node, `${label}: ${String(value)}`);
-  }
-  return value;
-};
-const asNode = (value, where) => {
-  if (!value || typeof value !== "object" || typeof value.type !== "string") {
-    throw new Error(`Invalid AST node for ${where}`);
-  }
-  return value;
-};
-const asNodeList = (value, where) => {
-  if (!Array.isArray(value)) throw new Error(`Expected array for ${where}`);
-  return value.map((v, i) => asNode(v, `${where}[${i}]`));
-};
-const toIdentifier = (node) => {
-  if (node.type !== "Identifier") unsupported(node, `Unsupported identifier node: ${node.type}`);
-  const name = node.name;
-  if (typeof name !== "string") throw new Error(`Invalid identifier name at ${nodePos(node)}`);
-  return { type: "Identifier", name };
-};
-const toLiteral = (node) => {
-  if (node.type !== "Literal") unsupported(node, `Unsupported literal node: ${node.type}`);
-  const value = node.value;
-  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return { type: "Literal", value };
-  }
-  unsupported(node, "Unsupported literal value");
-  throw new Error("unreachable");
-};
-const toKey = (node) => {
-  if (node.type === "Identifier") return toIdentifier(node);
-  if (node.type === "Literal") return toLiteral(node);
-  unsupported(node, `Unsupported property key: ${node.type}`);
-  throw new Error("unreachable");
-};
-const toPattern = (node) => {
-  switch (node.type) {
-    case "Identifier":
-      return toIdentifier(node);
-    case "RestElement":
-      return { type: "RestElement", argument: toPattern(asNode(node.argument, "RestElement.argument")) };
-    case "ArrayPattern": {
-      const raw = asNodeList(node.elements ?? [], "ArrayPattern.elements");
-      const elements2 = [];
-      for (const el2 of raw) {
-        if (el2.type === "Identifier" || el2.type === "RestElement" || el2.type === "ArrayPattern" || el2.type === "ObjectPattern") {
-          elements2.push(toPattern(el2));
-          continue;
-        }
-        unsupported(el2, "Unsupported array pattern element");
-      }
-      return { type: "ArrayPattern", elements: elements2 };
-    }
-    case "ObjectPattern": {
-      const props = asNodeList(node.properties, "ObjectPattern.properties");
-      const properties = props.map((prop) => {
-        if (prop.type === "RestElement") {
-          return { type: "RestElement", argument: toPattern(asNode(prop.argument, "RestElement.argument")) };
-        }
-        if (prop.type !== "Property") unsupported(prop, `Unsupported object pattern property: ${prop.type}`);
-        if (prop.kind !== "init" || prop.method === true || prop.computed === true) {
-          unsupported(prop, "Unsupported object pattern property form");
-        }
-        const key = toKey(asNode(prop.key, "Property.key"));
-        const value = toPattern(asNode(prop.value, "Property.value"));
-        const shorthand = prop.shorthand === true;
-        return { type: "Property", key, value, shorthand };
-      });
-      return { type: "ObjectPattern", properties };
-    }
-    default:
-      unsupported(node, `Unsupported pattern node: ${node.type}`);
-      throw new Error("unreachable");
-  }
-};
-const toSpreadElement = (node) => {
-  if (node.type !== "SpreadElement") unsupported(node, `Unsupported spread node: ${node.type}`);
-  return { type: "SpreadElement", argument: toExpr(asNode(node.argument, "SpreadElement.argument")) };
-};
-const toExpr = (node) => {
-  switch (node.type) {
-    case "Identifier":
-      return toIdentifier(node);
-    case "Literal":
-      return toLiteral(node);
-    case "ArrayExpression": {
-      const raw = asNodeList(node.elements ?? [], "ArrayExpression.elements");
-      const elements2 = raw.map(
-        (el2) => el2.type === "SpreadElement" ? toSpreadElement(el2) : toExpr(el2)
-      );
-      return { type: "ArrayExpression", elements: elements2 };
-    }
-    case "ObjectExpression": {
-      const props = asNodeList(node.properties, "ObjectExpression.properties");
-      const properties = props.map((prop) => {
-        if (prop.type === "SpreadElement") return toSpreadElement(prop);
-        if (prop.type !== "Property") unsupported(prop, `Unsupported object expression property: ${prop.type}`);
-        if (prop.kind !== "init" || prop.method === true || prop.computed === true) {
-          unsupported(prop, "Unsupported object expression property form");
-        }
-        const key = toKey(asNode(prop.key, "Property.key"));
-        const value = toExpr(asNode(prop.value, "Property.value"));
-        const shorthand = prop.shorthand === true;
-        return { type: "Property", key, value, shorthand };
-      });
-      return { type: "ObjectExpression", properties };
-    }
-    case "AwaitExpression":
-      return { type: "AwaitExpression", argument: toExpr(asNode(node.argument, "AwaitExpression.argument")) };
-    case "CallExpression": {
-      const args = asNodeList(node.arguments ?? [], "CallExpression.arguments");
-      return {
-        type: "CallExpression",
-        callee: toExpr(asNode(node.callee, "CallExpression.callee")),
-        arguments: args.map((a) => a.type === "SpreadElement" ? toSpreadElement(a) : toExpr(a))
-      };
-    }
-    case "MemberExpression": {
-      const computed = node.computed === true;
-      return {
-        type: "MemberExpression",
-        object: toExpr(asNode(node.object, "MemberExpression.object")),
-        property: toExpr(asNode(node.property, "MemberExpression.property")),
-        computed
-      };
-    }
-    case "AssignmentExpression": {
-      const operator = node.operator;
-      if (typeof operator !== "string") throw new Error(`Invalid assignment operator at ${nodePos(node)}`);
-      return {
-        type: "AssignmentExpression",
-        operator,
-        left: toExpr(asNode(node.left, "AssignmentExpression.left")),
-        right: toExpr(asNode(node.right, "AssignmentExpression.right"))
-      };
-    }
-    case "UpdateExpression": {
-      const operator = expectStringEnum(node, node.operator, ["++", "--"], "Unsupported update operator");
-      return {
-        type: "UpdateExpression",
-        operator,
-        argument: toExpr(asNode(node.argument, "UpdateExpression.argument")),
-        prefix: node.prefix === true
-      };
-    }
-    case "BinaryExpression":
-    case "LogicalExpression": {
-      const operator = node.operator;
-      if (typeof operator !== "string") throw new Error(`Invalid operator at ${nodePos(node)}`);
-      return {
-        type: node.type,
-        operator,
-        left: toExpr(asNode(node.left, "Binary/Logical.left")),
-        right: toExpr(asNode(node.right, "Binary/Logical.right"))
-      };
-    }
-    case "UnaryExpression": {
-      const operator = node.operator;
-      if (typeof operator !== "string") throw new Error(`Invalid unary operator at ${nodePos(node)}`);
-      return {
-        type: "UnaryExpression",
-        operator,
-        argument: toExpr(asNode(node.argument, "UnaryExpression.argument"))
-      };
-    }
-    case "ConditionalExpression":
-      return {
-        type: "ConditionalExpression",
-        test: toExpr(asNode(node.test, "ConditionalExpression.test")),
-        consequent: toExpr(asNode(node.consequent, "ConditionalExpression.consequent")),
-        alternate: toExpr(asNode(node.alternate, "ConditionalExpression.alternate"))
-      };
-    case "ArrowFunctionExpression": {
-      const params = asNodeList(node.params ?? [], "ArrowFunctionExpression.params").map(toPattern);
-      const bodyNode = asNode(node.body, "ArrowFunctionExpression.body");
-      const body = bodyNode.type === "BlockStatement" ? toBlock(bodyNode) : toExpr(bodyNode);
-      return {
-        type: "ArrowFunctionExpression",
-        params,
-        body,
-        async: node.async === true
-      };
-    }
-    default:
-      unsupported(node, `Unsupported expression: ${node.type}`);
-      throw new Error("unreachable");
-  }
-};
-const toVarDecl = (node) => {
-  if (node.type !== "VariableDeclarator") unsupported(node, `Unsupported declarator node: ${node.type}`);
-  return {
-    type: "VariableDeclarator",
-    id: toPattern(asNode(node.id, "VariableDeclarator.id")),
-    init: node.init == null ? null : toExpr(asNode(node.init, "VariableDeclarator.init"))
-  };
-};
-const toLetConstDecls = (node) => {
-  if (node.type !== "VariableDeclaration") unsupported(node, `Unsupported declaration node: ${node.type}`);
-  const kind = expectStringEnum(node, node.kind, ["let", "const"], "Unsupported variable kind");
-  const declarations = asNodeList(node.declarations ?? [], "VariableDeclaration.declarations").map(toVarDecl);
-  return { kind, declarations };
-};
-const toForLeft = (leftNode) => {
-  if (leftNode.type === "VariableDeclaration") {
-    const { kind, declarations } = toLetConstDecls(leftNode);
-    return { left: declarations, leftKind: kind };
-  }
-  return { left: toExpr(leftNode), leftKind: null };
-};
-const toBlock = (node) => {
-  if (node.type !== "BlockStatement") unsupported(node, `Unsupported block node: ${node.type}`);
-  const body = asNodeList(node.body ?? [], "BlockStatement.body").filter((stmt) => stmt.type !== "EmptyStatement").map(toStmt);
-  return { type: "BlockStatement", body };
-};
-const toStmt = (node) => {
-  switch (node.type) {
-    case "BlockStatement":
-      return toBlock(node);
-    case "ExpressionStatement":
-      return { type: "ExpressionStatement", expression: toExpr(asNode(node.expression, "ExpressionStatement.expression")) };
-    case "IfStatement":
-      return {
-        type: "IfStatement",
-        test: toExpr(asNode(node.test, "IfStatement.test")),
-        consequent: toStmt(asNode(node.consequent, "IfStatement.consequent")),
-        alternate: node.alternate ? toStmt(asNode(node.alternate, "IfStatement.alternate")) : null
-      };
-    case "ReturnStatement":
-      return {
-        type: "ReturnStatement",
-        argument: node.argument == null ? null : toExpr(asNode(node.argument, "ReturnStatement.argument"))
-      };
-    case "VariableDeclaration": {
-      const { kind, declarations } = toLetConstDecls(node);
-      return { type: "VariableDeclaration", kind, declarations };
-    }
-    case "BreakStatement":
-      return { type: "BreakStatement" };
-    case "ContinueStatement":
-      return { type: "ContinueStatement" };
-    case "WhileStatement":
-      return {
-        type: "WhileStatement",
-        test: toExpr(asNode(node.test, "WhileStatement.test")),
-        body: toStmt(asNode(node.body, "WhileStatement.body"))
-      };
-    case "ForStatement": {
-      const initNode = node.init;
-      let init = null;
-      let initKind = null;
-      if (initNode != null) {
-        const iNode = asNode(initNode, "ForStatement.init");
-        if (iNode.type === "VariableDeclaration") {
-          const parsed = toLetConstDecls(iNode);
-          init = parsed.declarations;
-          initKind = parsed.kind;
-        } else {
-          init = toExpr(iNode);
-        }
-      }
-      return {
-        type: "ForStatement",
-        init,
-        initKind,
-        test: node.test == null ? null : toExpr(asNode(node.test, "ForStatement.test")),
-        update: node.update == null ? null : toExpr(asNode(node.update, "ForStatement.update")),
-        body: toStmt(asNode(node.body, "ForStatement.body"))
-      };
-    }
-    case "ForInStatement": {
-      const left = toForLeft(asNode(node.left, "ForInStatement.left"));
-      return {
-        type: "ForInStatement",
-        left: left.left,
-        leftKind: left.leftKind,
-        right: toExpr(asNode(node.right, "ForInStatement.right")),
-        body: toStmt(asNode(node.body, "ForInStatement.body"))
-      };
-    }
-    case "ForOfStatement": {
-      if (node.await === true) unsupported(node, "for-await-of is not supported");
-      const left = toForLeft(asNode(node.left, "ForOfStatement.left"));
-      return {
-        type: "ForOfStatement",
-        left: left.left,
-        leftKind: left.leftKind,
-        right: toExpr(asNode(node.right, "ForOfStatement.right")),
-        body: toStmt(asNode(node.body, "ForOfStatement.body"))
-      };
-    }
-    default:
-      unsupported(node, `Unsupported statement: ${node.type}`);
-      throw new Error("unreachable");
-  }
-};
-const parse3 = (src) => {
-  const raw = parse$1(src, {
+var parse4 = (src) => {
+  return parse3(src, {
     ecmaVersion: "latest",
     sourceType: "script",
     allowReturnOutsideFunction: true,
     allowAwaitOutsideFunction: true
   });
-  if (raw.type !== "Program") unsupported(raw, `Unsupported root node: ${raw.type}`);
-  const body = asNodeList(raw.body ?? [], "Program.body").filter((stmt) => stmt.type !== "EmptyStatement").map(toStmt);
-  return { type: "Program", body };
 };
-const SAFE_IDENT_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
-const FORBIDDEN_IDENTS = /* @__PURE__ */ new Set([
+
+// ../core/src/codegen.ts
+var SAFE_IDENT_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+var FORBIDDEN_IDENTS = /* @__PURE__ */ new Set([
   "eval",
   "arguments",
   "this",
   "globalThis",
   "window",
   "document",
-  "self",
-  "top",
-  "parent",
-  "frames",
   "process",
   "require",
   "module",
@@ -6520,18 +6228,22 @@ const FORBIDDEN_IDENTS = /* @__PURE__ */ new Set([
   "__filename",
   "importScripts"
 ]);
-const assertSafeIdent = (name) => {
+var SAFE_CONSTRUCTORS = /* @__PURE__ */ new Set(["Map", "Set"]);
+var assertSafeIdent = (name) => {
   if (!SAFE_IDENT_RE.test(name))
     throw new Error(`unsafe identifier in codegen: ${JSON.stringify(name)}`);
   if (FORBIDDEN_IDENTS.has(name))
     throw new Error(`forbidden identifier in codegen: ${name}`);
 };
-const renderLiteral = (v) => {
+var renderLiteral = (node) => {
+  if (node.regex) throw new Error("regexp literals not supported");
+  if (node.bigint != null) throw new Error("bigint literals not supported");
+  const v = node.value;
   if (v === null) return "null";
   if (typeof v === "string") return JSON.stringify(v);
   return String(v);
 };
-const renderExpr = (e) => {
+var renderExpr = (e) => {
   switch (e.type) {
     case "Identifier":
       assertSafeIdent(e.name);
@@ -6539,9 +6251,9 @@ const renderExpr = (e) => {
     case "SpreadElement":
       return `...${renderExpr(e.argument)}`;
     case "Literal":
-      return renderLiteral(e.value);
+      return renderLiteral(e);
     case "ArrayExpression":
-      return `[${e.elements.map(renderExpr).join(", ")}]`;
+      return `[${e.elements.map((el2) => el2 ? renderExpr(el2) : "").join(", ")}]`;
     case "ObjectExpression":
       return `{${e.properties.map((p) => p.type === "SpreadElement" ? `...${renderExpr(p.argument)}` : renderProp(p)).join(", ")}}`;
     case "AwaitExpression":
@@ -6552,7 +6264,7 @@ const renderExpr = (e) => {
       return `${needsParens ? "(" : ""}${calleeStr}${needsParens ? ")" : ""}(${e.arguments.map(renderExpr).join(", ")})`;
     }
     case "MemberExpression":
-      return e.computed ? `${renderExpr(e.object)}[${renderExpr(e.property)}]` : `${renderExpr(e.object)}.${renderExpr(e.property)}`;
+      return e.computed ? `${renderExpr(e.object)}[__chk(${renderExpr(e.property)})]` : `${renderExpr(e.object)}.${renderExpr(e.property)}`;
     case "AssignmentExpression":
       return `${renderExpr(e.left)} ${e.operator} ${renderExpr(e.right)}`;
     case "UpdateExpression":
@@ -6564,19 +6276,31 @@ const renderExpr = (e) => {
       return e.operator === "typeof" ? `(${e.operator} ${renderExpr(e.argument)})` : `(${e.operator}${renderExpr(e.argument)})`;
     case "ConditionalExpression":
       return `(${renderExpr(e.test)} ? ${renderExpr(e.consequent)} : ${renderExpr(e.alternate)})`;
+    case "NewExpression": {
+      if (e.callee.type !== "Identifier") throw new Error("new: only simple constructors allowed");
+      const name = e.callee.name;
+      assertSafeIdent(name);
+      if (!SAFE_CONSTRUCTORS.has(name)) throw new Error(`new: ${name} is not an allowed constructor`);
+      return `new ${name}(${e.arguments.map(renderExpr).join(", ")})`;
+    }
     case "ArrowFunctionExpression":
       return renderArrow(e);
+    default:
+      throw new Error(`unsupported expression: ${e.type}`);
   }
 };
-const renderProp = (p) => {
-  const key = p.key.type === "Identifier" ? p.key.name : renderLiteral(p.key.value);
+var renderProp = (p) => {
+  if (p.computed) throw new Error("computed properties not supported");
+  if (p.method) throw new Error("method properties not supported");
+  if (p.kind !== "init") throw new Error(`unsupported property kind: ${p.kind}`);
+  const key = p.key.type === "Identifier" ? p.key.name : renderLiteral(p.key);
   if (p.shorthand && p.value.type === "Identifier" && p.value.name === key) {
     assertSafeIdent(key);
     return key;
   }
   return `${key}: ${renderExpr(p.value)}`;
 };
-const renderArrow = (e) => {
+var renderArrow = (e) => {
   const params = `(${e.params.map(renderPattern).join(", ")})`;
   const prefix = e.async ? "async " : "";
   if (e.body.type === "BlockStatement") {
@@ -6584,7 +6308,7 @@ const renderArrow = (e) => {
   }
   return `${prefix}${params} => { __burn(); return ${renderExpr(e.body)}; }`;
 };
-const renderStmt = (s, inFn = false) => {
+var renderStmt = (s, inFn = false) => {
   const burn = inFn ? "__burn();" : "";
   const renderLoopBody = (body) => {
     if (body.type === "BlockStatement") {
@@ -6605,6 +6329,7 @@ const renderStmt = (s, inFn = false) => {
     case "ReturnStatement":
       return `${burn}return${s.argument ? ` ${renderExpr(s.argument)}` : ""};`;
     case "VariableDeclaration":
+      if (s.kind === "var") throw new Error("var declarations not allowed");
       return `${burn}${s.kind} ${s.declarations.map(renderDecl).join(", ")};`;
     case "BreakStatement":
       return `${burn}break;`;
@@ -6613,40 +6338,56 @@ const renderStmt = (s, inFn = false) => {
     case "WhileStatement":
       return `${burn}while (${renderExpr(s.test)}) ${renderLoopBody(s.body)}`;
     case "ForStatement": {
-      const init = s.init == null ? "" : Array.isArray(s.init) ? `${s.initKind} ${s.init.map(renderDecl).join(", ")}` : renderExpr(s.init);
+      const init = s.init == null ? "" : s.init.type === "VariableDeclaration" ? `${s.init.kind} ${s.init.declarations.map(renderDecl).join(", ")}` : renderExpr(s.init);
       const test = s.test ? renderExpr(s.test) : "";
       const update = s.update ? renderExpr(s.update) : "";
       return `${burn}for (${init}; ${test}; ${update}) ${renderLoopBody(s.body)}`;
     }
     case "ForInStatement": {
-      const left = Array.isArray(s.left) ? `${s.leftKind} ${s.left.map(renderDecl).join(", ")}` : renderExpr(s.left);
+      const left = s.left.type === "VariableDeclaration" ? `${s.left.kind} ${s.left.declarations.map(renderDecl).join(", ")}` : renderExpr(s.left);
       return `${burn}for (${left} in ${renderExpr(s.right)}) ${renderLoopBody(s.body)}`;
     }
     case "ForOfStatement": {
-      const left = Array.isArray(s.left) ? `${s.leftKind} ${s.left.map(renderDecl).join(", ")}` : renderExpr(s.left);
+      if (s.await) throw new Error("for-await-of not supported");
+      const left = s.left.type === "VariableDeclaration" ? `${s.left.kind} ${s.left.declarations.map(renderDecl).join(", ")}` : renderExpr(s.left);
       return `${burn}for (${left} of ${renderExpr(s.right)}) ${renderLoopBody(s.body)}`;
     }
+    case "EmptyStatement":
+      return "";
+    default:
+      throw new Error(`unsupported statement: ${s.type}`);
   }
 };
-const renderDecl = (d) => `${renderPattern(d.id)}${d.init ? ` = ${renderExpr(d.init)}` : ""}`;
-const renderPattern = (p) => {
-  if (p.type === "Identifier") {
-    assertSafeIdent(p.name);
-    return p.name;
+var renderDecl = (d) => `${renderPattern(d.id)}${d.init ? ` = ${renderExpr(d.init)}` : ""}`;
+var renderPattern = (p) => {
+  switch (p.type) {
+    case "Identifier":
+      assertSafeIdent(p.name);
+      return p.name;
+    case "AssignmentPattern":
+      return `${renderPattern(p.left)} = ${renderExpr(p.right)}`;
+    case "RestElement":
+      return `...${renderPattern(p.argument)}`;
+    case "ArrayPattern":
+      return `[${p.elements.map((el2) => el2 ? renderPattern(el2) : "").join(", ")}]`;
+    case "ObjectPattern":
+      return `{${p.properties.map(
+        (prop) => prop.type === "RestElement" ? `...${renderPattern(prop.argument)}` : renderPatternProperty(prop)
+      ).join(", ")}}`;
+    default:
+      throw new Error(`unsupported pattern: ${p.type}`);
   }
-  if (p.type === "RestElement") return `...${renderPattern(p.argument)}`;
-  if (p.type === "ArrayPattern") return `[${p.elements.map(renderPattern).join(", ")}]`;
-  return `{${p.properties.map((prop) => prop.type === "RestElement" ? `...${renderPattern(prop.argument)}` : renderPatternProperty(prop)).join(", ")}}`;
 };
-const renderPatternProperty = (p) => {
-  const key = p.key.type === "Identifier" ? p.key.name : renderLiteral(p.key.value);
+var renderPatternProperty = (p) => {
+  if (p.computed) throw new Error("computed pattern properties not supported");
+  const key = p.key.type === "Identifier" ? p.key.name : renderLiteral(p.key);
   if (p.shorthand && p.key.type === "Identifier" && p.value.type === "Identifier" && p.value.name === p.key.name) {
     assertSafeIdent(key);
     return key;
   }
   return `${key}: ${renderPattern(p.value)}`;
 };
-const validateNoReservedRuntimeNames = (program, reservedNames) => {
+var validateNoReservedRuntimeNames = (program, reservedNames) => {
   const reserved = new Set(reservedNames);
   const errors = [];
   const hit = (name) => {
@@ -6657,24 +6398,25 @@ const validateNoReservedRuntimeNames = (program, reservedNames) => {
       case "Identifier":
         hit(p.name);
         return;
+      case "AssignmentPattern":
+        visitPattern(p.left);
+        return;
       case "RestElement":
         visitPattern(p.argument);
         return;
       case "ArrayPattern":
-        p.elements.forEach(visitPattern);
+        p.elements.forEach((el2) => el2 && visitPattern(el2));
         return;
       case "ObjectPattern":
         p.properties.forEach((prop) => {
-          if (prop.type === "RestElement") {
-            visitPattern(prop.argument);
-            return;
-          }
-          visitPattern(prop.value);
+          if (prop.type === "RestElement") visitPattern(prop.argument);
+          else visitPattern(prop.value);
         });
         return;
     }
   };
   const visitExpr = (e) => {
+    if (!e) return;
     switch (e.type) {
       case "Identifier":
         hit(e.name);
@@ -6685,7 +6427,7 @@ const validateNoReservedRuntimeNames = (program, reservedNames) => {
         visitExpr(e.argument);
         return;
       case "ArrayExpression":
-        e.elements.forEach((el2) => visitExpr(el2));
+        e.elements.forEach((el2) => el2 && visitExpr(el2));
         return;
       case "ObjectExpression":
         e.properties.forEach((p) => {
@@ -6699,6 +6441,10 @@ const validateNoReservedRuntimeNames = (program, reservedNames) => {
         return;
       case "AwaitExpression":
         visitExpr(e.argument);
+        return;
+      case "NewExpression":
+        visitExpr(e.callee);
+        e.arguments.forEach((a) => visitExpr(a));
         return;
       case "CallExpression":
         visitExpr(e.callee);
@@ -6763,7 +6509,7 @@ const validateNoReservedRuntimeNames = (program, reservedNames) => {
         visitStmt(s.body);
         return;
       case "ForStatement":
-        if (Array.isArray(s.init)) s.init.forEach(visitVarDecl);
+        if (s.init?.type === "VariableDeclaration") s.init.declarations.forEach(visitVarDecl);
         else if (s.init) visitExpr(s.init);
         if (s.test) visitExpr(s.test);
         if (s.update) visitExpr(s.update);
@@ -6771,35 +6517,68 @@ const validateNoReservedRuntimeNames = (program, reservedNames) => {
         return;
       case "ForInStatement":
       case "ForOfStatement":
-        if (Array.isArray(s.left)) s.left.forEach(visitVarDecl);
+        if (s.left.type === "VariableDeclaration") s.left.declarations.forEach(visitVarDecl);
         else visitExpr(s.left);
         visitExpr(s.right);
         visitStmt(s.body);
         return;
       case "BreakStatement":
       case "ContinueStatement":
+      case "EmptyStatement":
         return;
     }
   };
   program.body.forEach(visitStmt);
   return errors;
 };
-const renderRunnerWithFuelShared = (program, fuelRefName = "__fuel") => {
+var CHK_FN = `const __chk = (k) => { if (typeof k === "string" && (k === "constructor" || k === "__proto__" || k === "prototype")) throw new Error("forbidden property: " + k); return k; };`;
+var renderRunnerWithFuelShared = (program, fuelRefName = "__fuel") => {
   assertSafeIdent(fuelRefName);
-  const reservedErrs = validateNoReservedRuntimeNames(program, [fuelRefName, "__burn"]);
+  const reservedErrs = validateNoReservedRuntimeNames(program, [fuelRefName, "__burn", "__chk"]);
   if (reservedErrs.length) throw new Error(reservedErrs.join(", "));
-  const prelude = `const __burn = () => { if (--${fuelRefName}.value < 0) throw new Error("fuel exhausted"); };`;
+  const prelude = `const __burn = () => { if (--${fuelRefName}.value < 0) throw new Error("fuel exhausted"); };${CHK_FN}`;
   const body = program.body.map((s) => renderStmt(s, true)).join("");
   return `${prelude}const __run = () => {${body}}; try { const ok = __run(); return { ok, fuel: ${fuelRefName}.value }; } catch (err) { return { err: String(err), fuel: ${fuelRefName}.value }; }`;
 };
-const SAFE_OBJECT = (() => {
-  const safe = /* @__PURE__ */ Object.create(null);
-  safe.keys = (obj) => Object.keys(obj);
-  safe.values = (obj) => Object.values(obj);
-  safe.entries = (obj) => Object.entries(obj);
-  return Object.freeze(safe);
-})();
-const parseFunctionCtor = (ctorArgs) => {
+var renderRunnerWithFuelSharedAsync = (program, fuelRefName = "__fuel") => {
+  assertSafeIdent(fuelRefName);
+  const reservedErrs = validateNoReservedRuntimeNames(program, [fuelRefName, "__burn", "__chk"]);
+  if (reservedErrs.length) throw new Error(reservedErrs.join(", "));
+  const prelude = `const __burn = () => { if (--${fuelRefName}.value < 0) throw new Error("fuel exhausted"); };${CHK_FN}`;
+  const body = program.body.map((s) => renderStmt(s, true)).join("");
+  return `${prelude}const __run = async () => {${body}}; return __run().then(ok => ({ ok, fuel: ${fuelRefName}.value })).catch(err => ({ err: String(err), fuel: ${fuelRefName}.value }));`;
+};
+var SAFE_OBJECT = Object.freeze(Object.assign(/* @__PURE__ */ Object.create(null), {
+  keys: (obj) => Object.keys(obj),
+  values: (obj) => Object.values(obj),
+  entries: (obj) => Object.entries(obj),
+  fromEntries: (entries) => Object.fromEntries(entries),
+  assign: (target, ...sources) => Object.assign(target, ...sources),
+  freeze: (obj) => Object.freeze(obj)
+}));
+var SAFE_ARRAY = Object.freeze(Object.assign(/* @__PURE__ */ Object.create(null), {
+  isArray: (v) => Array.isArray(v),
+  from: (v, mapFn) => mapFn ? Array.from(v, mapFn) : Array.from(v),
+  of: (...items) => Array.of(...items)
+}));
+var SAFE_MATH = Object.freeze(Object.assign(/* @__PURE__ */ Object.create(null), {
+  abs: Math.abs,
+  ceil: Math.ceil,
+  floor: Math.floor,
+  round: Math.round,
+  min: Math.min,
+  max: Math.max,
+  pow: Math.pow,
+  sqrt: Math.sqrt,
+  sign: Math.sign,
+  trunc: Math.trunc,
+  log: Math.log,
+  log2: Math.log2,
+  random: Math.random,
+  PI: Math.PI,
+  E: Math.E
+}));
+var parseFunctionCtor = (ctorArgs) => {
   if (ctorArgs.some((v) => typeof v !== "string")) {
     throw new Error("Function arguments must be strings");
   }
@@ -6825,7 +6604,7 @@ const parseFunctionCtor = (ctorArgs) => {
   }
   return { params, body };
 };
-const mapFunctionArgs = (params, callArgs) => {
+var mapFunctionArgs = (params, callArgs) => {
   const env2 = {};
   let idx = 0;
   for (const p of params) {
@@ -6838,7 +6617,7 @@ const mapFunctionArgs = (params, callArgs) => {
   }
   return env2;
 };
-const makeSafeFunctionSync = (fuelRef, outerGlobals) => (...ctorArgs) => {
+var makeSafeFunctionSync = (fuelRef, outerGlobals) => (...ctorArgs) => {
   const { params, body } = parseFunctionCtor(ctorArgs);
   return (...callArgs) => {
     const localEnv = { ...outerGlobals, ...mapFunctionArgs(params, callArgs) };
@@ -6847,18 +6626,31 @@ const makeSafeFunctionSync = (fuelRef, outerGlobals) => (...ctorArgs) => {
     return res.ok;
   };
 };
-const withBuiltins = (env2, fuelRef, mode) => {
+var makeSafeFunctionAsync = (fuelRef, outerGlobals) => (...ctorArgs) => {
+  const { params, body } = parseFunctionCtor(ctorArgs);
+  return async (...callArgs) => {
+    const localEnv = { ...outerGlobals, ...mapFunctionArgs(params, callArgs) };
+    const res = await runWithFuelSharedAsync(body, fuelRef, localEnv);
+    if ("err" in res) throw new Error(res.err);
+    return res.ok;
+  };
+};
+var withBuiltins = (env2, fuelRef, mode) => {
   const baseGlobals = {
     ...env2,
     Object: SAFE_OBJECT,
+    Array: SAFE_ARRAY,
+    Math: SAFE_MATH,
+    Map,
+    Set,
     Promise
   };
   return {
     ...baseGlobals,
-    Function: makeSafeFunctionSync(fuelRef, baseGlobals)
+    Function: mode === "async" ? makeSafeFunctionAsync(fuelRef, baseGlobals) : makeSafeFunctionSync(fuelRef, baseGlobals)
   };
 };
-const stringifyError = (err) => {
+var stringifyError = (err) => {
   if (err instanceof Error) {
     const stack = err.stack || "";
     const prefix = `${err.name}: ${err.message}`;
@@ -6875,10 +6667,10 @@ ${cleanStack}` : prefix;
   }
   return String(err);
 };
-const runWithFuelShared = (src, fuelRef, env2 = {}, fuelRefName = "__fuel") => {
+var runWithFuelShared = (src, fuelRef, env2 = {}, fuelRefName = "__fuel") => {
   try {
     const runtimeEnv = withBuiltins(env2, fuelRef, "sync");
-    const program = parse3(src);
+    const program = parse4(src);
     const protoErrs = validateNoPrototype(program);
     if (protoErrs.length) return { err: "prototype access", fuel: fuelRef.value };
     const scopeErrs = validateScopes(program, [...Object.keys(runtimeEnv), fuelRefName]);
@@ -6890,15 +6682,48 @@ const runWithFuelShared = (src, fuelRef, env2 = {}, fuelRefName = "__fuel") => {
     return { err: stringifyError(err), fuel: fuelRef.value };
   }
 };
-const localStoreKey = (fnRef, key) => `${fnRef}|${hashData(key)}`;
-const parseDeps = (src) => {
+var runWithFuelSharedAsync = async (src, fuelRef, env2 = {}, fuelRefName = "__fuel") => {
+  try {
+    const runtimeEnv = withBuiltins(env2, fuelRef, "async");
+    const program = parse4(src);
+    const protoErrs = validateNoPrototype(program);
+    if (protoErrs.length) return { err: "prototype access", fuel: fuelRef.value };
+    const scopeErrs = validateScopes(program, [...Object.keys(runtimeEnv), fuelRefName]);
+    if (scopeErrs.length) return { err: scopeErrs.join(", "), fuel: fuelRef.value };
+    const code = renderRunnerWithFuelSharedAsync(program, fuelRefName);
+    const fullEnv = { ...runtimeEnv, [fuelRefName]: fuelRef };
+    const fn = new Function(...Object.keys(fullEnv), code);
+    return await fn(...Object.values(fullEnv));
+  } catch (err) {
+    return { err: stringifyError(err), fuel: fuelRef.value };
+  }
+};
+
+// ../lib/src/runtime.ts
+var localStoreKey = (fnRef, key) => `${fnRef}|${hashData(key)}`;
+var makeStore = (noteRef, memStore, ls) => ({
+  get: (key) => {
+    const skey = `hashnotes:store:${localStoreKey(noteRef, key)}`;
+    const raw = ls?.getItem(skey);
+    if (raw != null) return fromjson(raw);
+    return memStore.get(skey);
+  },
+  set: (key, value) => {
+    const skey = `hashnotes:store:${localStoreKey(noteRef, key)}`;
+    const v = value;
+    if (ls) ls.setItem(skey, JSON.stringify(v));
+    else memStore.set(skey, v);
+    return v;
+  }
+});
+var parseDeps = (src) => {
   const m = src.match(/^const __deps = \[([^\]]*)\];/);
   if (!m) return [];
   return [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
 };
-const callViewClient = async (fn, _arg, options = {}) => {
+var callViewClient = async (fn, _args, options = {}) => {
   const fuelRef = { value: options.fuel ?? 1e5 };
-  const sourceCache = /* @__PURE__ */ new Map();
+  const noteCache2 = /* @__PURE__ */ new Map();
   const memStore = /* @__PURE__ */ new Map();
   const ls = (() => {
     try {
@@ -6907,46 +6732,47 @@ const callViewClient = async (fn, _arg, options = {}) => {
       return void 0;
     }
   })();
+  const fnToHash = /* @__PURE__ */ new Map();
   const fnRef = await asRef(fn);
   const fnNote = await deRef(fnRef);
   if (typeof fnNote !== "string") throw new Error("view note must resolve to a string");
   const prefetch = async (ref2) => {
-    if (sourceCache.has(ref2)) return;
-    const src = await deRef(ref2);
-    if (typeof src !== "string") throw new Error("prefetch: note must be a string");
-    sourceCache.set(ref2, src);
-    for (const dep of parseDeps(src)) await prefetch(dep);
-  };
-  for (const dep of parseDeps(fnNote)) await prefetch(dep);
-  const store = {
-    get: (key) => {
-      const skey = `hashnotes:store:${localStoreKey(fnRef, key)}`;
-      const raw = ls == null ? void 0 : ls.getItem(skey);
-      if (raw != null) return fromjson(raw);
-      return memStore.get(skey);
-    },
-    set: (key, value) => {
-      const skey = `hashnotes:store:${localStoreKey(fnRef, key)}`;
-      const v = value;
-      if (ls) ls.setItem(skey, JSON.stringify(v));
-      else memStore.set(skey, v);
-      return v;
+    if (noteCache2.has(ref2)) return;
+    const data2 = await deRef(ref2);
+    noteCache2.set(ref2, data2);
+    if (typeof data2 === "string") {
+      for (const dep of parseDeps(data2)) await prefetch(dep);
     }
   };
-  const remote = async (remoteFn, remoteArg) => callNote(remoteFn, remoteArg === void 0 ? null : remoteArg);
-  const getNoteSync = (ref2) => {
-    const src = sourceCache.get(ref2);
-    if (src === void 0) throw new Error(`getNoteSync: note ${ref2} not in cache`);
-    return (callArg) => {
-      const result = runWithFuelShared(src, fuelRef, { ...baseEnv, arg: callArg });
+  for (const dep of parseDeps(fnNote)) await prefetch(dep);
+  const store = makeStore(fnRef, memStore, ls);
+  const remote = (fn2) => {
+    const hash = fnToHash.get(fn2) ?? fn2;
+    return (...remoteArgs) => callNote(hash, remoteArgs);
+  };
+  const getFuncSync = (ref2) => {
+    const src = noteCache2.get(ref2);
+    if (src === void 0) throw new Error(`getFuncSync: note ${ref2} not in cache`);
+    if (typeof src !== "string") throw new Error(`getFuncSync: note ${ref2} is not code`);
+    const fn2 = (...callArgs) => {
+      const depStore = makeStore(ref2, memStore, ls);
+      const result = runWithFuelShared(src, fuelRef, { ...baseEnv, args: callArgs, store: depStore });
       if ("err" in result) throw new Error(result.err);
       return result.ok;
     };
+    fnToHash.set(fn2, ref2);
+    return fn2;
+  };
+  const getDataSync = (ref2) => {
+    const data2 = noteCache2.get(ref2);
+    if (data2 === void 0) throw new Error(`getDataSync: note ${ref2} not in cache`);
+    return data2;
   };
   const baseEnv = {
     ...options.env ?? {},
     remote,
-    getNoteSync,
+    getFuncSync,
+    getDataSync,
     store,
     addNote,
     getNote,
@@ -6954,162 +6780,174 @@ const callViewClient = async (fn, _arg, options = {}) => {
     deref: deRef,
     hashData,
     fromjson,
-    HTML
+    HTML,
+    JSON,
+    console
   };
   return (upper) => {
-    const result = runWithFuelShared(fnNote, fuelRef, { ...baseEnv, arg: upper });
+    const result = runWithFuelShared(fnNote, fuelRef, { ...baseEnv, args: [upper] });
     if ("err" in result) throw new Error(result.err);
     return result.ok;
   };
 };
-const parseRefFromPath = (pathname) => {
-  const segment = pathname.replace(/^\/+/, "").split("/")[0];
-  if (!segment) return null;
-  const decoded = decodeURIComponent(segment).trim();
-  if (!decoded) return null;
-  if (isRef(decoded)) return decoded;
-  if (/^[a-f0-9]{32}$/i.test(decoded)) return `#${decoded}`;
-  return null;
-};
-const DEV_URL = "http://localhost:4321";
-const renderRef = async (mount, ref2) => {
-  let note = await getNote(ref2);
-  try {
-    const view = await callViewClient(ref2, {});
-    const el2 = renderDom(view);
-    mount.innerHTML = "";
-    mount.append(el2);
-  } catch (err) {
-    mount.innerHTML = "";
-    mount.append(renderDom((u) => HTML.pre(`failed to render note: ${ref2}
-${err}
-${tojson(note)}`)));
-  }
-};
-const el = (tag, text2) => {
+
+// src/main.ts
+var DEV_URL = "http://localhost:4321";
+var el = (tag, text2) => {
   const e = document.createElement(tag);
   if (text2) e.textContent = text2;
   return e;
 };
-const fetchHistory = async () => {
-  const res = await fetch(`${DEV_URL}/history`);
-  return JSON.parse(await res.text());
+var errorText = (err) => {
+  if (err instanceof Error) {
+    const stack = err.stack ? `
+${err.stack}` : "";
+    return `${err.name}: ${err.message}${stack}`;
+  }
+  return String(err);
 };
-const latestView = (history) => [...history].reverse().find((e) => e.exportName === "view" || e.exportName === "default");
-const showBlockedHint = (mount) => {
-  const hint = el("p", "Can't reach dev server (localhost:4321). Is it running? (npm run dev --workspace lib) If it is, an ad blocker may be blocking the request.");
-  hint.style.cssText = "color:orange;font-size:0.85em;margin-top:1em;";
-  mount.append(hint);
+var renderErrorPanel = (mount, title, err, context = {}) => {
+  mount.innerHTML = "";
+  const box = el("div");
+  box.style.cssText = "margin:8px 0;padding:12px;border:1px solid #b44;background:rgba(180,68,68,0.12);";
+  const h = el("h3", title);
+  h.style.cssText = "margin:0 0 8px 0;font-size:1rem;";
+  box.append(h);
+  const meta = Object.entries(context).map(([k, v]) => `${k}: ${v}`).join("\n");
+  if (meta) {
+    const m = el("pre", meta);
+    m.style.cssText = "margin:0 0 8px 0;white-space:pre-wrap;opacity:0.85;";
+    box.append(m);
+  }
+  const body = el("pre", errorText(err));
+  body.style.cssText = "margin:0;white-space:pre-wrap;overflow:auto;max-height:50vh;";
+  box.append(body);
+  mount.append(box);
 };
-const bootLive = async (mount) => {
+var parseRef = (pathname) => {
+  const seg = decodeURIComponent(pathname.replace(/^\/+/, "").split("/")[0]).trim();
+  if (!seg) return null;
+  if (isRef(seg)) return seg;
+  if (/^[a-f0-9]{32}$/i.test(seg)) return `#${seg}`;
+  return null;
+};
+var startPolling = (mount, poll) => {
   mount.innerHTML = "";
   mount.textContent = "Connecting to dev server...";
-  let lastJson = "";
-  let fails = 0;
-  const poll = async () => {
-    var _a;
+  const run = async () => {
     try {
-      const res = await fetch(`${DEV_URL}/history`);
-      fails = 0;
-      const json = await res.text();
-      if (json === lastJson) return;
-      lastJson = json;
-      const history = JSON.parse(json);
-      mount.innerHTML = "";
-      mount.append(el("h2", "hashnotes dev"));
-      mount.append(el("p", `${history.length} compiled notes (${getServer()})`));
-      for (const entry of history) {
-        const row = el("div");
-        const isView = entry.exportName === "view" || entry.exportName === "default";
-        if (isView) {
-          const a = document.createElement("a");
-          a.href = `/${entry.jsHash.slice(1)}`;
-          a.textContent = entry.exportName;
-          row.append(a);
-          const liveLink = document.createElement("a");
-          liveLink.href = "/live/view";
-          liveLink.textContent = " (live)";
-          liveLink.style.opacity = "0.5";
-          liveLink.style.fontSize = "0.85em";
-          row.append(liveLink);
-        } else {
-          const span = el("span", entry.exportName);
-          span.style.opacity = "0.5";
-          row.append(span);
-        }
-        const hash = el("span", ` ${entry.jsHash.slice(0, 14)}…`);
-        hash.style.opacity = "0.4";
-        hash.style.fontSize = "0.85em";
-        row.append(hash);
-        mount.append(row);
-      }
-    } catch {
-      if (++fails === 3 && !mount.querySelector("[data-blocked-hint]")) {
-        showBlockedHint(mount);
-        (_a = mount.lastElementChild) == null ? void 0 : _a.setAttribute("data-blocked-hint", "1");
-      }
+      await poll();
+    } catch (err) {
+      console.error("live poll failed", err);
     }
   };
-  await poll();
-  setInterval(poll, 500);
+  run();
+  setInterval(run, 500);
 };
-const bootLiveView = async (mount) => {
-  mount.innerHTML = "";
-  mount.textContent = "Connecting to dev server...";
-  let lastJsHash = "";
-  const poll = async () => {
+var fetchHistory = async () => JSON.parse(await (await fetch(`${DEV_URL}/history`)).text());
+var latestView = (history) => [...history].reverse().find((e) => e.exportName === "view" || e.exportName === "default");
+var renderRef = async (mount, ref2) => {
+  const note = await getNote(ref2);
+  try {
+    const view = await callViewClient(ref2);
+    mount.innerHTML = "";
+    mount.append(renderDom(view, { pathname: window.location.pathname }));
+  } catch (err) {
+    renderErrorPanel(mount, "Failed to render note view", err, {
+      ref: ref2,
+      path: window.location.pathname,
+      note: tojson(note)
+    });
+  }
+};
+var bootLiveView = (mount, path2) => {
+  let last = "";
+  let lastErrorKey = "";
+  startPolling(mount, async () => {
     try {
       const history = await fetchHistory();
       const view = latestView(history);
       if (!view) {
         mount.innerHTML = "";
-        mount.append(el("p", "No view found in compiled notes."));
+        mount.append(el("p", "No view found."));
         return;
       }
-      if (view.jsHash === lastJsHash) return;
-      lastJsHash = view.jsHash;
+      if (view.jsHash === last) return;
+      last = view.jsHash;
       const bar = el("div");
       bar.style.cssText = "padding:4px 8px;font-size:0.85em;opacity:0.6;";
-      const permLink = document.createElement("a");
-      permLink.href = `/${view.jsHash.slice(1)}`;
-      permLink.textContent = `${view.filename ?? view.exportName} → ${view.jsHash.slice(0, 14)}…`;
-      bar.append(permLink);
-      const viewFn = await callViewClient(view.jsHash, {});
-      const rendered = renderDom(viewFn);
+      const a = document.createElement("a");
+      a.href = `/${view.jsHash.slice(1)}`;
+      a.textContent = `${view.filename ?? view.exportName} \u2192 ${view.jsHash.slice(0, 14)}\u2026`;
+      bar.append(a);
+      const rendered = renderDom(await callViewClient(view.jsHash), { pathname: path2.replace("/live/view", "") || "/" });
       mount.innerHTML = "";
-      mount.append(bar);
-      mount.append(rendered);
+      mount.append(bar, rendered);
+      lastErrorKey = "";
     } catch (err) {
-      if (lastJsHash === "" && !mount.querySelector("[data-blocked-hint]")) {
-        mount.innerHTML = "";
-        mount.textContent = "Connecting to dev server...";
-        showBlockedHint(mount);
+      const key = errorText(err);
+      if (key !== lastErrorKey) {
+        renderErrorPanel(mount, "Failed to render latest live view", err, {
+          path: path2,
+          retry: "automatic (500ms)"
+        });
+        lastErrorKey = key;
       }
     }
-  };
-  await poll();
-  setInterval(poll, 500);
+  });
 };
-const boot = async () => {
+var bootLiveIndex = (mount) => {
+  let last = "";
+  startPolling(mount, async () => {
+    const json = await (await fetch(`${DEV_URL}/history`)).text();
+    if (json === last) return;
+    last = json;
+    const history = JSON.parse(json);
+    mount.innerHTML = "";
+    mount.append(el("h2", "hashnotes dev"));
+    mount.append(el("p", `${history.length} compiled notes (${getServer()})`));
+    for (const entry of history) {
+      const row = el("div");
+      const isView = entry.exportName === "view" || entry.exportName === "default";
+      if (isView) {
+        const a = document.createElement("a");
+        a.href = `/${entry.jsHash.slice(1)}`;
+        a.textContent = entry.exportName;
+        row.append(a);
+        const live = document.createElement("a");
+        live.href = "/live/view";
+        live.textContent = " (live)";
+        live.style.cssText = "opacity:0.5;font-size:0.85em;";
+        row.append(live);
+      } else {
+        const span = el("span", entry.exportName);
+        span.style.opacity = "0.5";
+        row.append(span);
+      }
+      const hash = el("span", ` ${entry.jsHash.slice(0, 14)}\u2026`);
+      hash.style.cssText = "opacity:0.4;font-size:0.85em;";
+      row.append(hash);
+      mount.append(row);
+    }
+  });
+};
+var boot = async () => {
   const mount = document.getElementById("app") ?? document.body;
   const path2 = window.location.pathname.replace(/\/+$/, "");
-  if (path2 === "/live/view") {
-    return bootLiveView(mount);
-  }
-  if (path2 === "/live") {
-    return bootLive(mount);
-  }
-  const ref2 = parseRefFromPath(window.location.pathname);
+  if (path2.startsWith("/live/view")) return bootLiveView(mount, path2);
+  if (path2 === "/live") return bootLiveIndex(mount);
+  const ref2 = parseRef(path2);
   if (!ref2) {
-    mount.innerHTML = "";
     mount.textContent = "Open /<note-hash> to render that note as a view.";
     return;
   }
   await renderRef(mount, ref2);
 };
+
+// src/entry.ts
 boot().catch((err) => {
   console.error(err);
   const mount = document.getElementById("app") ?? document.body;
   mount.textContent = `App boot failed: ${String(err)}`;
 });
-//# sourceMappingURL=index-w0aQ_8ic.js.map
+//# sourceMappingURL=index-ZDXSIOEF.js.map

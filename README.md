@@ -26,7 +26,7 @@ This enables portable UI definitions where the view logic itself is addressable 
 
 - `/Users/iainbanks/code/dkormann/hashnotes/core` language/runtime primitives
 - `/Users/iainbanks/code/dkormann/hashnotes/lib` DB client, runtime, tests, playground scripts
-- `/Users/iainbanks/code/dkormann/hashnotes/app` browser app (Vite)
+- `/Users/iainbanks/code/dkormann/hashnotes/app` browser app (Bun build/dev server)
 - `/Users/iainbanks/code/dkormann/hashnotes/docs` static build output
 
 ## Getting Started

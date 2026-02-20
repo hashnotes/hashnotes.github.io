@@ -11,6 +11,44 @@ const el = (tag: string, text?: string): HTMLElement => {
   return e;
 };
 
+const errorText = (err: unknown): string => {
+  if (err instanceof Error) {
+    const stack = err.stack ? `\n${err.stack}` : "";
+    return `${err.name}: ${err.message}${stack}`;
+  }
+  return String(err);
+};
+
+const renderErrorPanel = (
+  mount: HTMLElement,
+  title: string,
+  err: unknown,
+  context: Record<string, string> = {},
+) => {
+  mount.innerHTML = "";
+
+  const box = el("div");
+  box.style.cssText = "margin:8px 0;padding:12px;border:1px solid #b44;background:rgba(180,68,68,0.12);";
+
+  const h = el("h3", title);
+  h.style.cssText = "margin:0 0 8px 0;font-size:1rem;";
+  box.append(h);
+
+  const meta = Object.entries(context)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join("\n");
+  if (meta) {
+    const m = el("pre", meta);
+    m.style.cssText = "margin:0 0 8px 0;white-space:pre-wrap;opacity:0.85;";
+    box.append(m);
+  }
+
+  const body = el("pre", errorText(err));
+  body.style.cssText = "margin:0;white-space:pre-wrap;overflow:auto;max-height:50vh;";
+  box.append(body);
+  mount.append(box);
+};
+
 const parseRef = (pathname: string): Ref | null => {
   const seg = decodeURIComponent(pathname.replace(/^\/+/, "").split("/")[0]).trim();
   if (!seg) return null;
@@ -22,7 +60,15 @@ const parseRef = (pathname: string): Ref | null => {
 const startPolling = (mount: HTMLElement, poll: () => Promise<void>) => {
   mount.innerHTML = "";
   mount.textContent = "Connecting to dev server...";
-  poll().then(() => setInterval(poll, 500));
+  const run = async () => {
+    try {
+      await poll();
+    } catch (err) {
+      console.error("live poll failed", err);
+    }
+  };
+  run();
+  setInterval(run, 500);
 };
 
 const fetchHistory = async (): Promise<HistoryEntry[]> =>
@@ -38,30 +84,46 @@ const renderRef = async (mount: HTMLElement, ref: Ref) => {
     mount.innerHTML = "";
     mount.append(renderDom(view, { pathname: window.location.pathname }));
   } catch (err) {
-    mount.innerHTML = "";
-    mount.append(renderDom(() => HTML.pre(`failed to render note: ${ref}\n${err}\n${tojson(note)}`), { pathname: "/" }));
+    renderErrorPanel(mount, "Failed to render note view", err, {
+      ref,
+      path: window.location.pathname,
+      note: tojson(note),
+    });
   }
 };
 
 const bootLiveView = (mount: HTMLElement, path: string) => {
   let last = "";
+  let lastErrorKey = "";
   startPolling(mount, async () => {
-    const history = await fetchHistory();
-    const view = latestView(history);
-    if (!view) { mount.innerHTML = ""; mount.append(el("p", "No view found.")); return; }
-    if (view.jsHash === last) return;
-    last = view.jsHash;
+    try {
+      const history = await fetchHistory();
+      const view = latestView(history);
+      if (!view) { mount.innerHTML = ""; mount.append(el("p", "No view found.")); return; }
+      if (view.jsHash === last) return;
+      last = view.jsHash;
 
-    const bar = el("div");
-    bar.style.cssText = "padding:4px 8px;font-size:0.85em;opacity:0.6;";
-    const a = document.createElement("a");
-    a.href = `/${view.jsHash.slice(1)}`;
-    a.textContent = `${view.filename ?? view.exportName} → ${view.jsHash.slice(0, 14)}…`;
-    bar.append(a);
+      const bar = el("div");
+      bar.style.cssText = "padding:4px 8px;font-size:0.85em;opacity:0.6;";
+      const a = document.createElement("a");
+      a.href = `/${view.jsHash.slice(1)}`;
+      a.textContent = `${view.filename ?? view.exportName} → ${view.jsHash.slice(0, 14)}…`;
+      bar.append(a);
 
-    const rendered = renderDom(await callViewClient(view.jsHash as Ref), { pathname: path.replace("/live/view", "") || "/" });
-    mount.innerHTML = "";
-    mount.append(bar, rendered);
+      const rendered = renderDom(await callViewClient(view.jsHash as Ref), { pathname: path.replace("/live/view", "") || "/" });
+      mount.innerHTML = "";
+      mount.append(bar, rendered);
+      lastErrorKey = "";
+    } catch (err) {
+      const key = errorText(err);
+      if (key !== lastErrorKey) {
+        renderErrorPanel(mount, "Failed to render latest live view", err, {
+          path,
+          retry: "automatic (500ms)",
+        });
+        lastErrorKey = key;
+      }
+    }
   });
 };
 

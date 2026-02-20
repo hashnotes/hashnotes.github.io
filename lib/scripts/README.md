@@ -4,9 +4,9 @@
 
 ```
 # terminal 1: dev watcher + compiler
-(cd lib && bun run dev)
+bun run dev:scripts
 
-# terminal 2: vite dev server
+# terminal 2: app dev server
 bun run dev
 ```
 
