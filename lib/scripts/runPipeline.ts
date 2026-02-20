@@ -1,5 +1,5 @@
-// ts-note: notes/#672529cbe195515b5a555622d471f61c.ts
-// js-note: notes/#8aa50d818d9057b7346dc354f6849898.js
+// ts-note: notes/#30a4a5a0440a301c8fdda84726cf9bab.ts
+// js-note: notes/#c96f4105213abd58062ed6f00bfb5275.js
 
 
 import { Graph } from "./pipeline"
@@ -22,7 +22,8 @@ export const runPipeline = (graph: Graph, input:Jsonable) :GraphTrace => {
       }
       case "logic": {
         let inputs = Object.values(graph.inputs).map(x=>go(x, input))
-        let res = Function(...Object.keys(graph.inputs), graph.code)(...inputs) as Jsonable
+        let values = inputs.map(x => x.value)
+        let res = Function(...Object.keys(graph.inputs), graph.code)(...values) as Jsonable
         return {
           graph,
           inputs,
@@ -31,9 +32,8 @@ export const runPipeline = (graph: Graph, input:Jsonable) :GraphTrace => {
       }
       case "loop":{
         let steps = [go(graph.input, input)]
-        
-        while (go(graph.condition, steps[steps.length-1].value)){
-          steps.push(go(graph.body, steps[steps.length-1]))
+        while (go(graph.condition, steps[steps.length-1].value).value){
+          steps.push(go(graph.body, steps[steps.length-1].value))
         }
 
         return {
@@ -46,6 +46,5 @@ export const runPipeline = (graph: Graph, input:Jsonable) :GraphTrace => {
   }
   return go(graph, input)
 }
-
 
 
