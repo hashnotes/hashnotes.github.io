@@ -35,6 +35,7 @@ export type ViewContext = {
   add: (parent: VDom, ...el: VDom[])=> void,
   del: (el: VDom) => void,
   update: (el: VDom) => void,
+  onUserEvent?: (type: DomEventType) => void,
   location: { pathname: string },
   width: number,
   height: number,
@@ -69,6 +70,8 @@ export type View = (ctx: ViewContext) => VDom;
 
 export const renderDom = (mker: View, location: { pathname: string } = { pathname: "/" }, width = globalThis.innerWidth ?? 0, height = globalThis.innerHeight ?? 0): HTMLElement => {
 
+  let ctxRef: ViewContext | null = null
+
   const render = (dom:VDom) : Element=>{
 
     const el = svgTags.has(dom.tag) ? document.createElementNS(svgNamespace, dom.tag)
@@ -84,6 +87,7 @@ export const renderDom = (mker: View, location: { pathname: string } = { pathnam
     })
     Object.entries(dom.style).forEach(st=>el.style.setProperty(...st))
     mouseEvents.forEach((type) => el.addEventListener(type, (e) => {
+      if (ctxRef && ctxRef.onUserEvent) ctxRef.onUserEvent(type)
       const me = e as globalThis.MouseEvent
       const event: MouseEvent = {
         type,
@@ -101,6 +105,7 @@ export const renderDom = (mker: View, location: { pathname: string } = { pathnam
       else if (type === "wheel" && dom.onwheel) dom.onwheel(event)
     }));
     keyboardEvents.forEach((type) => el.addEventListener(type, (e) =>{
+      if (ctxRef && ctxRef.onUserEvent) ctxRef.onUserEvent(type)
       let {key, metaKey, shiftKey} = e as globalThis.KeyboardEvent;
       if (["INPUT" , "TEXTAREA"].includes((e.target as HTMLElement).tagName)) dom.value = (e.target as HTMLInputElement).value
       const event: KeyboardEvent = { type, key, metaKey, shiftKey, target: doms.get(e.target as HTMLElement)!}
@@ -110,7 +115,7 @@ export const renderDom = (mker: View, location: { pathname: string } = { pathnam
     return el
 
   }
-  return render(mker({
+  const ctx: ViewContext = {
     add: (parent: VDom, ...el: VDom[]) => {
       elements.get(parent)?.append(...el.map(e=>render(e)))
     },
@@ -128,7 +133,9 @@ export const renderDom = (mker: View, location: { pathname: string } = { pathnam
     location,
     width,
     height,
-  })) as HTMLElement
+  }
+  ctxRef = ctx
+  return render(mker(ctx)) as HTMLElement
 }
 
 

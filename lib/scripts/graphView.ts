@@ -1,5 +1,5 @@
-// ts-note: notes/#521614db8825fac651d87a12e2419887.ts
-// js-note: notes/#0d7ea29f2cdbd5b56d6d4014c8560bd8.js
+// ts-note: notes/#e20c041f223a3a2418722cf0cf2674e5.ts
+// js-note: notes/#759e9e8d08d3fa9dbcc78ceca2cd5f32.js
 
 import { runPipeline } from "./runPipeline"
 import type { GraphTrace } from "./runPipeline"
@@ -41,7 +41,19 @@ export const graphView = (
   let expandedLoopKeys = new Set<string>()
   let expandedIterKeys = new Set<string>()
   let traceDagByKey = new Map<Ref, DAG>()
+  let selectedTraceKey: Ref | null = null
+  let selectedSourceKey: Ref | null = null
   let refreshView: () => void = () => {}
+
+  const traceKeyOf = (trace: GraphTrace): Ref =>
+    (trace.ref ? trace.ref : hashData({
+      graph: trace.graph as unknown as Jsonable,
+      value: trace.value,
+      count: trace.inputs.length,
+    })) as Ref
+
+  const sourceKeyOf = (g: Graph): Ref =>
+    hashData(g as unknown as Jsonable)
 
   const formatValue = (x: Jsonable): string => {
     if (typeof x === "string") return x
@@ -95,20 +107,37 @@ export const graphView = (
     return await go(rootRef)
   }
 
-  const traceDag = (trace: GraphTrace): DAG => {
+  const traceDag = (trace: GraphTrace, loopPrevSource: DAG | null = null): DAG => {
     const traceKey = (trace.ref ? trace.ref : hashData({
       graph: trace.graph as unknown as Jsonable,
       value: trace.value,
       count: trace.inputs.length,
     })) as Ref
     const nodeName = trace.graph.title ? trace.graph.title : trace.graph.$
+    if (trace.graph.$ === "input" && loopPrevSource) {
+      const node: DAG = {
+        title: nodeName + " <= prev",
+        srcs: [loopPrevSource],
+      }
+      traceDagByKey.set(traceKey, node)
+      node.onclick = () => {
+        if (sourceGraphCtl) {
+          const srcNode = memoByHash.get(hashData(trace.graph as unknown as Jsonable))
+          sourceGraphCtl.highlight(srcNode ? srcNode : null)
+        }
+        if (onTraceNodeClick) onTraceNodeClick(trace)
+      }
+      return node
+    }
     if (trace.graph.$ === "loop") {
       const iters = Math.max(0, trace.inputs.length - 1)
       const loopKey = traceKey
       const expanded = expandedLoopKeys.has(loopKey)
       const clickTrace = (t: GraphTrace) => {
+        selectedTraceKey = traceKeyOf(t)
+        selectedSourceKey = sourceKeyOf(t.graph)
         if (sourceGraphCtl) {
-          const srcNode = memoByHash.get(hashData(t.graph as unknown as Jsonable))
+          const srcNode = memoByHash.get(selectedSourceKey)
           sourceGraphCtl.highlight(srcNode ? srcNode : null)
         }
         if (onTraceNodeClick) onTraceNodeClick(t)
@@ -127,7 +156,7 @@ export const graphView = (
           count: step.inputs.length,
         })) as Ref
         const stepExpanded = expandedIterKeys.has(stepKey)
-        const stepDetail = traceDag(step)
+        const stepDetail = traceDag(step, prev)
         const stepNode: DAG = {
           title: (i === 0 ? "start" : "iter " + i) + (stepExpanded ? " [-] " : " [+] ") + "=> " + short(step.value),
           srcs: prev ? [prev] : []
@@ -135,6 +164,8 @@ export const graphView = (
         if (stepExpanded) {
           stepNode.srcs = prev ? [prev, stepDetail] : [stepDetail]
         }
+        // For loop iterations, keep selection/focus on the outer step node.
+        traceDagByKey.set(stepKey, stepNode)
         stepNode.onclick = () => {
           clickTrace(step)
           if (expandedIterKeys.has(stepKey)) expandedIterKeys.delete(stepKey)
@@ -157,12 +188,14 @@ export const graphView = (
     }
     const node: DAG = {
       title: nodeName + " => " + short(trace.value),
-      srcs: trace.inputs.map(traceDag),
+      srcs: trace.inputs.map((x) => traceDag(x, loopPrevSource)),
     }
     traceDagByKey.set(traceKey, node)
     node.onclick = () => {
+      selectedTraceKey = traceKey
+      selectedSourceKey = sourceKeyOf(trace.graph)
       if (sourceGraphCtl) {
-        const srcNode = memoByHash.get(hashData(trace.graph as unknown as Jsonable))
+        const srcNode = memoByHash.get(selectedSourceKey)
         sourceGraphCtl.highlight(srcNode ? srcNode : null)
       }
       if (onTraceNodeClick) onTraceNodeClick(trace)
@@ -229,7 +262,9 @@ export const graphView = (
           border: "1px solid var(--color)",
           background: "var(--background)",
           padding: "0.6em",
-          overflowX: "auto",
+          overflow: "auto",
+          resize: "both",
+          minHeight: "220px",
         }
       },
       HTML.h4({ style: { margin: "0 0 0.4em 0" } }, "pipeline"),
@@ -247,7 +282,9 @@ export const graphView = (
               border: "1px solid var(--color)",
               background: "var(--background)",
               padding: "0.6em",
-              overflowX: "auto",
+              overflow: "auto",
+              resize: "both",
+              minHeight: "220px",
             }
           },
           HTML.h4({ style: { margin: "0 0 0.4em 0" } }, "trace"),
@@ -271,6 +308,9 @@ export const graphView = (
               border: "1px dashed var(--color)",
               background: "var(--background)",
               padding: "0.6em",
+              overflow: "auto",
+              resize: "both",
+              minHeight: "220px",
             }
           },
           HTML.h4({ style: { margin: "0 0 0.4em 0", opacity: "0.8" } }, "trace"),
@@ -280,7 +320,7 @@ export const graphView = (
     return HTML.div(
       controls,
       HTML.div(
-        { style: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: "0.75em", alignItems: "start" } },
+        { style: { display: "flex", gap: "0.75em", alignItems: "flex-start", width: "100%", overflowX: "auto" } },
         sourcePane,
         tracePane,
       ),
@@ -292,23 +332,29 @@ export const graphView = (
     if (traceGraphCtl) traceVp = traceGraphCtl.getViewport()
     root.children = render().children
     ctx.update(root)
+    if (sourceGraphCtl && selectedSourceKey) {
+      const sourceNode = memoByHash.get(selectedSourceKey)
+      sourceGraphCtl.highlight(sourceNode ? sourceNode : null)
+    }
+    if (traceGraphCtl && selectedTraceKey) {
+      const traceNode = traceDagByKey.get(selectedTraceKey)
+      if (traceNode) traceGraphCtl.highlight(traceNode)
+    }
   }
 
   const focusGraph = (node: Graph) => {
     if (!sourceGraphCtl) return
-    const dagNode = memoByHash.get(hashData(node as unknown as Jsonable))
+    selectedSourceKey = sourceKeyOf(node)
+    const dagNode = memoByHash.get(selectedSourceKey)
     if (!dagNode) return
     sourceGraphCtl.focus(dagNode)
   }
 
   const focusTrace = (trace: GraphTrace) => {
     if (!traceGraphCtl) return
-    const key = (trace.ref ? trace.ref : hashData({
-      graph: trace.graph as unknown as Jsonable,
-      value: trace.value,
-      count: trace.inputs.length,
-    })) as Ref
-    const dagNode = traceDagByKey.get(key)
+    selectedTraceKey = traceKeyOf(trace)
+    selectedSourceKey = sourceKeyOf(trace.graph)
+    const dagNode = traceDagByKey.get(selectedTraceKey)
     if (!dagNode) return
     traceGraphCtl.focus(dagNode)
   }

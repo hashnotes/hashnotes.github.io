@@ -1,5 +1,5 @@
-// ts-note: notes/#1862957a61f2773171da748e8a7065a0.ts
-// js-note: notes/#7ddd9e88b607f54718bdadbcd2d77b3a.js
+// ts-note: notes/#40da8d7d79ef1630a67e6716563dae5b.ts
+// js-note: notes/#a45ae5d8a2b45e6bc1a28016ae2b3036.js
 export type DAG = {
   title: string,
   srcs: DAG[],
@@ -27,7 +27,6 @@ export const drawGraph = (
   ctx: ViewContext,
   initialViewport: { panX: number, panY: number, vpW: number, vpH: number } | null = null,
 ): DrawGraphResult => {
-  // collect all unique nodes and edges
   let allNodes: DAG[] = []
   let edges: [DAG, DAG][] = []
   let visited = new Set<DAG>()
@@ -43,42 +42,34 @@ export const drawGraph = (
   }
   collect(graph)
 
-  // compute depth: leaves = 0, parents = 1 + max child depth
   let depth = new Map<DAG, number>()
-  let depthOf = (node: DAG): number => {
-    if (depth.has(node)) return depth.get(node)!
-    let d = node.srcs.length > 0
-      ? 1 + Math.max(...node.srcs.map(s => depthOf(s)))
-      : 0
-    depth.set(node, d)
-    return d
+  let stack: DAG[] = [graph]
+  depth.set(graph, 0)
+  while (stack.length > 0) {
+    let cur = stack.pop() as DAG
+    let curD = depth.get(cur) as number
+    cur.srcs.forEach((src) => {
+      let nextD = curD + 1
+      let prevD = depth.get(src)
+      if (prevD == null || nextD > prevD) {
+        depth.set(src, nextD)
+        stack.push(src)
+      }
+    })
   }
-  allNodes.forEach(n => depthOf(n))
+  allNodes.forEach((n) => { if (!depth.has(n)) depth.set(n, 0) })
 
-  // group into layers by depth
   let maxDepth = Math.max(0, ...allNodes.map(n => depth.get(n)!))
-  let layers: DAG[][] = []
-  for (let d = 0; d <= maxDepth; d++) {
-    layers.push(allNodes.filter(n => depth.get(n) === d))
-  }
+  let layers: DAG[][] = Array.from({ length: maxDepth + 1 }, (_, d) => allNodes.filter(n => depth.get(n) === d))
 
-  // barycenter ordering to reduce edge crossings
-  // build adjacency: for each node, which nodes connect to it?
   let neighbors = new Map<DAG, DAG[]>()
   allNodes.forEach(n => neighbors.set(n, []))
-  edges.forEach(e => {
-    neighbors.get(e[0])!.push(e[1])
-    neighbors.get(e[1])!.push(e[0])
-  })
+  edges.forEach(([a, b]) => { neighbors.get(a)!.push(b); neighbors.get(b)!.push(a) })
 
-  // assign initial indices within each layer
   let indexOf = new Map<DAG, number>()
   layers.forEach(layer => layer.forEach((n, i) => indexOf.set(n, i)))
 
-  // sweep: for each layer, sort nodes by average index of neighbors in adjacent layers
-  let passes = 4
-  for (let p = 0; p < passes; p++) {
-    // down sweep (layer 0 to max)
+  for (let p = 0; p < 4; p++) {
     layers.forEach(layer => {
       layer.forEach(node => {
         let nbrs = neighbors.get(node)!
@@ -94,22 +85,19 @@ export const drawGraph = (
     })
   }
 
-  let layerCount = layers.length
   let maxPerLayer = Math.max(1, ...layers.map(l => l.length))
 
-  // label/layout constraints
   let maxLabelChars = 18
   let maxLabelLines = 3
   let maxLabelWidth = 170
 
-  // layout world size: can exceed viewport, so pan/zoom has room.
   let padX = 40
   let padY = 30
   let minGapX = Math.max(140, maxLabelWidth + 24)
   let minGapY = 105
   let fullW = Math.max(w, padX * 2 + (maxPerLayer > 1 ? (maxPerLayer - 1) * minGapX : 0))
-  let fullH = Math.max(h, padY * 2 + (layerCount > 1 ? (layerCount - 1) * minGapY : 0))
-  let gapY = layerCount > 1 ? (fullH - padY * 2) / (layerCount - 1) : 0
+  let gapY = minGapY
+  let rootY = h - padY
   let pos = new Map<DAG, Pos>()
 
   layers.forEach((layer, lvl) => {
@@ -117,10 +105,17 @@ export const drawGraph = (
     let gapX = count > 1 ? (fullW - padX * 2) / (count - 1) : 0
     layer.forEach((node, i) => {
       let x = count > 1 ? padX + i * gapX : fullW / 2
-      let y = padY + lvl * gapY
+      let y = rootY - lvl * gapY
       pos.set(node, { x, y })
     })
   })
+
+  let allPos = [...pos.values()]
+  let minXCoord = Math.min(...allPos.map(p => p.x))
+  let maxXCoord = Math.max(...allPos.map(p => p.x))
+  let minYCoord = Math.min(...allPos.map(p => p.y))
+  let maxYCoord = Math.max(...allPos.map(p => p.y))
+  let graphW = Math.max(1, maxXCoord - minXCoord)
 
   let fontSize = Math.max(6, Math.min(14, Math.round(fullW / maxPerLayer / 8)))
   let offset = fontSize * 0.7
@@ -154,7 +149,6 @@ export const drawGraph = (
     return lines
   }
 
-  // connected edges per node (index into edges array)
   let nodeEdges = new Map<DAG, number[]>()
   edges.forEach((e, i) => {
     let add = (n: DAG) => {
@@ -166,15 +160,14 @@ export const drawGraph = (
     add(e[1])
   })
 
-  // selection state
   let selected: DAG | null = null
   let root: VDom = HTML.div()
   let vpW = initialViewport ? initialViewport.vpW : w
   let vpH = initialViewport ? initialViewport.vpH : h
   let minVpW = Math.max(120, Math.floor(w * 0.2))
-  let maxVpW = Math.max(w, Math.floor(fullW * 2))
-  let panX = initialViewport ? initialViewport.panX : (fullW - vpW) / 2
-  let panY = initialViewport ? initialViewport.panY : (fullH - vpH) / 2
+  let maxVpW = Math.max(w, Math.floor((graphW + padX * 2) * 8))
+  let panX = initialViewport ? initialViewport.panX : ((minXCoord + maxXCoord - vpW) / 2)
+  let panY = initialViewport ? initialViewport.panY : (maxYCoord - vpH + padY)
   let dragging = false
   let dragMoved = false
   let justDragged = false
@@ -186,42 +179,44 @@ export const drawGraph = (
   let applyViewport = (el: Element | null) => {
     if (!el || !el.setAttribute) return
     el.setAttribute("viewBox", "" + panX + " " + panY + " " + vpW + " " + vpH)
-    let styleEl = el as unknown as { style?: { cursor?: string } }
-    if (styleEl.style) styleEl.style.cursor = dragging ? "grabbing" : "grab"
+    ;(el as unknown as { style?: { cursor?: string } }).style!.cursor = dragging ? "grabbing" : "grab"
   }
 
   let applyRebuild = (next: VDom) => {
-    root.children = next.children
-    root.attrs = next.attrs
-    root.style = next.style
-    root.textContent = next.textContent
-    root.onclick = next.onclick
-    root.onmousedown = next.onmousedown
-    root.onmouseup = next.onmouseup
-    root.onmousemove = next.onmousemove
-    root.onwheel = next.onwheel
+    Object.assign(root, {
+      children: next.children,
+      attrs: next.attrs,
+      style: next.style,
+      textContent: next.textContent,
+      onclick: next.onclick,
+      onmousedown: next.onmousedown,
+      onmouseup: next.onmouseup,
+      onmousemove: next.onmousemove,
+      onwheel: next.onwheel,
+    })
+  }
+
+  let clampAxis = (coordMin: number, coordMax: number, vp: number, pad: number, pan: number): number => {
+    if (coordMax - coordMin <= vp) {
+      let center = (coordMin + coordMax - vp) / 2
+      return Math.max(center - pad, Math.min(pan, center + pad))
+    }
+    let min = coordMin - pad
+    let max = coordMax - vp + pad
+    return Math.max(min, Math.min(pan, max))
   }
 
   let clamp = () => {
     let padPanX = vpW * 0.45
     let padPanY = vpH * 0.25
-    let minX = Math.min((fullW - vpW) / 2 - padPanX, -padPanX)
-    let maxX = Math.max((fullW - vpW) / 2 + padPanX, fullW - vpW + padPanX)
-    let minY = Math.min((fullH - vpH) / 2 - padPanY, -padPanY)
-    let maxY = Math.max((fullH - vpH) / 2 + padPanY, fullH - vpH + padPanY)
-    panX = Math.max(minX, Math.min(panX, maxX))
-    panY = Math.max(minY, Math.min(panY, maxY))
+    panX = clampAxis(minXCoord - padX, maxXCoord + padX, vpW, padPanX, panX)
+    panY = clampAxis(minYCoord - padY, maxYCoord + padY, vpH, padPanY, panY)
   }
   clamp()
 
   let build = (): VDom => {
-    let litEdges = new Set<number>()
-    if (selected) {
-      let ei = nodeEdges.get(selected)
-      if (ei) ei.forEach(i => litEdges.add(i))
-    }
+    let litEdges = new Set<number>(selected ? (nodeEdges.get(selected) || []) : [])
 
-    // edge paths: normal ones first, highlighted on top
     let normalPaths: string[] = []
     let litPaths: string[] = []
     edges.forEach((e, i) => {
@@ -235,7 +230,6 @@ export const drawGraph = (
       else normalPaths.push(d)
     })
 
-    // node labels
     let nodeEls: VDom[] = []
     layers.forEach(layer => {
       layer.forEach(node => {
@@ -245,7 +239,7 @@ export const drawGraph = (
         let lineH = fontSize * 1.2
         let padX = fontSize * 0.45
         let padY = fontSize * 0.4
-        let maxLen = Math.max(...lines.map(s => s.length))
+        let maxLen = lines.reduce((m, s) => Math.max(m, s.length), 0)
         let bw = Math.max(20, Math.min(maxLabelWidth, maxLen * fontSize * 0.58 + padX * 2))
         let bh = Math.max(fontSize + padY * 2, lines.length * lineH + padY * 2)
         let bx = p.x - bw / 2
@@ -299,8 +293,7 @@ export const drawGraph = (
           }
           selected = selected === node ? null : node
           if (node.onclick) node.onclick()
-          let rebuilt = build()
-          applyRebuild(rebuilt)
+          applyRebuild(build())
           ctx.update(root)
         }
         el.style.cursor = "pointer"
@@ -308,20 +301,18 @@ export const drawGraph = (
       })
     })
 
-    // normal edges + highlighted edges on top + node labels
     let svgRoot = HTML.svgPath(
       normalPaths,
-      { viewBox: "" + panX + " " + panY + " " + vpW + " " + vpH, width: "" + w, height: "" + h },
+      { viewBox: "" + panX + " " + panY + " " + vpW + " " + vpH, width: "100%", height: "100%" },
     )
     svgRoot.style.cursor = dragging ? "grabbing" : "grab"
     svgRoot.style.userSelect = "none"
     svgRoot.style.touchAction = "none"
+    svgRoot.style.display = "block"
+    svgRoot.style.minWidth = "" + w + "px"
+    svgRoot.style.minHeight = "" + h + "px"
 
-    let stopDragging = () => {
-      justDragged = dragging && dragMoved
-      dragging = false
-      dragMoved = false
-    }
+    let stopDragging = () => { justDragged = dragging && dragMoved; dragging = false; dragMoved = false }
 
     svgRoot.onmousedown = (e: any) => {
       if (e && e.clientX != null) {
@@ -373,14 +364,12 @@ export const drawGraph = (
       clamp()
       applyViewport(e.currentTarget || null)
     }
-    // add highlighted edge paths
     litPaths.forEach(d => {
       svgRoot.children.push({
         tag: "path", textContent: "", id: "", style: {}, children: [],
         attrs: { d, fill: "none", stroke: "#f90", "stroke-width": "1.5" },
       })
     })
-    // add node elements
     nodeEls.forEach(el => svgRoot.children.push(el))
 
     return svgRoot
@@ -388,8 +377,7 @@ export const drawGraph = (
 
   const highlight = (node: DAG | null) => {
     selected = node
-    let rebuilt = build()
-    applyRebuild(rebuilt)
+    applyRebuild(build())
     ctx.update(root)
   }
 
@@ -401,8 +389,7 @@ export const drawGraph = (
       panY = p.y - vpH / 2
       clamp()
     }
-    let rebuilt = build()
-    applyRebuild(rebuilt)
+    applyRebuild(build())
     ctx.update(root)
   }
 

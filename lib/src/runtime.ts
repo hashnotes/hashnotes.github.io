@@ -169,7 +169,8 @@ export const callViewClient = async (
 ): Promise<View> => {
   // View notes have inlined bodies — args[0] is the upper object.
   // Pre-fetch dep sources async, then return a sync wrapper.
-  const fuelRef = { value: options.fuel ?? 100000 };
+  const fuelBudget = options.fuel ?? 100000;
+  const fuelRef = { value: fuelBudget };
   const noteCache = new Map<string, Jsonable>();
   const memStore = new Map<string, Jsonable>();
   const ls = (() => {
@@ -238,7 +239,14 @@ export const callViewClient = async (
 
   // Inlined body — args[0] is the window object.
   return (upper: ViewContext): VDom => {
-    const result = runWithFuelShared(fnNote, fuelRef, { ...baseEnv, args: [upper] });
+    const wrappedUpper: ViewContext = {
+      ...upper,
+      onUserEvent: () => {
+        // Refill budget on explicit user interaction; keep shared cap to preserve anti-loop behavior.
+        fuelRef.value = fuelBudget;
+      },
+    }
+    const result = runWithFuelShared(fnNote, fuelRef, { ...baseEnv, args: [wrappedUpper] });
     if ("err" in result) throw new Error(result.err);
     return result.ok as VDom;
   };

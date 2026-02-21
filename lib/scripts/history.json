@@ -1,5 +1,11 @@
 [
   {
+    "tsHash": "#0c215aef0f107a617a9bff722d4e7836",
+    "jsHash": "#f9f82277894c03d4831ff6dc1ad5f34b",
+    "exportName": "jsonSchema",
+    "filename": "jsonSchema"
+  },
+  {
     "tsHash": "#f1029bd71051b12bc4dd976711397b24",
     "jsHash": "#50fac4534a9d79e59e0195debb7eace4",
     "exportName": "mkGraph",
@@ -18,20 +24,20 @@
     "filename": "runPipeline"
   },
   {
-    "tsHash": "#1862957a61f2773171da748e8a7065a0",
-    "jsHash": "#7ddd9e88b607f54718bdadbcd2d77b3a",
+    "tsHash": "#40da8d7d79ef1630a67e6716563dae5b",
+    "jsHash": "#a45ae5d8a2b45e6bc1a28016ae2b3036",
     "exportName": "drawGraph",
     "filename": "drawGraph"
   },
   {
-    "tsHash": "#521614db8825fac651d87a12e2419887",
-    "jsHash": "#0d7ea29f2cdbd5b56d6d4014c8560bd8",
+    "tsHash": "#e20c041f223a3a2418722cf0cf2674e5",
+    "jsHash": "#759e9e8d08d3fa9dbcc78ceca2cd5f32",
     "exportName": "graphView",
     "filename": "graphView"
   },
   {
-    "tsHash": "#c059b338a733d87c5740be4641142fc3",
-    "jsHash": "#25332986ff3768be69894594fec17ce7",
+    "tsHash": "#5f9b26b9cad62153efe54b8e8cdf4af6",
+    "jsHash": "#e14511dc186e5b0bef76e80dceb957d0",
     "exportName": "view",
     "filename": "AppView"
   },
@@ -46,12 +52,6 @@
     "jsHash": "#9f944e042ae52eed5221e669425eb7e6",
     "exportName": "loadTrace",
     "filename": "loadTrace"
-  },
-  {
-    "tsHash": "#14590792e3a8b7f1501a006b763c2030",
-    "jsHash": "#e17bce2eb689c9334e17c873520c9864",
-    "exportName": "unknown",
-    "filename": "schema"
   },
   {
     "tsHash": "#73bc5e0bac11b4a468809f26881205a3",

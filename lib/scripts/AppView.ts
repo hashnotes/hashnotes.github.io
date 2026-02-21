@@ -1,5 +1,5 @@
-// ts-note: notes/#c059b338a733d87c5740be4641142fc3.ts
-// js-note: notes/#25332986ff3768be69894594fec17ce7.js
+// ts-note: notes/#5f9b26b9cad62153efe54b8e8cdf4af6.ts
+// js-note: notes/#e14511dc186e5b0bef76e80dceb957d0.js
 
 import { graphView } from "./graphView.ts";
 import type { GraphViewApi } from "./graphView.ts";
@@ -250,10 +250,14 @@ export const view: View = (ctx) => {
         {
           style: {
             width: previewPaneW + "px",
+            minWidth: "280px",
             background: "var(--background)",
             border: "1px solid var(--color)",
             padding: "0.75em",
             boxSizing: "border-box",
+            overflow: "auto",
+            resize: "both",
+            minHeight: "220px",
           }
         },
         HTML.h4({ style: { margin: "0 0 0.75em 0", background: "var(--background)" } }, "node preview"),
