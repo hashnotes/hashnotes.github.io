@@ -1,5 +1,5 @@
 // ts-note: notes/#c059b338a733d87c5740be4641142fc3.ts
-// js-note: notes/#b719098aa24e23d81bd29eb9650d2a95.js
+// js-note: notes/#25332986ff3768be69894594fec17ce7.js
 
 import { graphView } from "./graphView.ts";
 import type { GraphViewApi } from "./graphView.ts";

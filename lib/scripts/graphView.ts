@@ -1,5 +1,5 @@
-// ts-note: notes/#10cf601faf621fc02f146454b9b22485.ts
-// js-note: notes/#aa893bcfea8aa83aa6a01f3979319bdb.js
+// ts-note: notes/#521614db8825fac651d87a12e2419887.ts
+// js-note: notes/#0d7ea29f2cdbd5b56d6d4014c8560bd8.js
 
 import { runPipeline } from "./runPipeline"
 import type { GraphTrace } from "./runPipeline"
@@ -39,6 +39,7 @@ export const graphView = (
   let sourceVp: { panX: number, panY: number, vpW: number, vpH: number } | null = null
   let traceVp: { panX: number, panY: number, vpW: number, vpH: number } | null = null
   let expandedLoopKeys = new Set<string>()
+  let expandedIterKeys = new Set<string>()
   let traceDagByKey = new Map<Ref, DAG>()
   let refreshView: () => void = () => {}
 
@@ -117,14 +118,35 @@ export const graphView = (
         else expandedLoopKeys.add(loopKey)
         refreshView()
       }
-      const iterNodes = trace.inputs.map((step, i) => ({
-        title: (i === 0 ? "start" : "iter " + i) + " => " + short(step.value),
-        srcs: [traceDag(step)],
-        onclick: () => clickTrace(step),
-      }))
+      const iterNodes: DAG[] = []
+      let prev: DAG | null = null
+      trace.inputs.forEach((step, i) => {
+        const stepKey = (step.ref ? step.ref : hashData({
+          graph: step.graph as unknown as Jsonable,
+          value: step.value,
+          count: step.inputs.length,
+        })) as Ref
+        const stepExpanded = expandedIterKeys.has(stepKey)
+        const stepDetail = traceDag(step)
+        const stepNode: DAG = {
+          title: (i === 0 ? "start" : "iter " + i) + (stepExpanded ? " [-] " : " [+] ") + "=> " + short(step.value),
+          srcs: prev ? [prev] : []
+        }
+        if (stepExpanded) {
+          stepNode.srcs = prev ? [prev, stepDetail] : [stepDetail]
+        }
+        stepNode.onclick = () => {
+          clickTrace(step)
+          if (expandedIterKeys.has(stepKey)) expandedIterKeys.delete(stepKey)
+          else expandedIterKeys.add(stepKey)
+          refreshView()
+        }
+        iterNodes.push(stepNode)
+        prev = stepNode
+      })
       const node: DAG = {
         title: nodeName + " (" + iters + ") " + (expanded ? "[-]" : "[+]") + " => " + short(trace.value),
-        srcs: expanded ? iterNodes : [],
+        srcs: expanded && iterNodes.length > 0 ? [iterNodes[iterNodes.length - 1]] : [],
       }
       traceDagByKey.set(traceKey, node)
       node.onclick = () => {
