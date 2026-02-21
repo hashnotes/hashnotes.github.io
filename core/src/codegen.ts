@@ -39,7 +39,13 @@ export const assertSafeIdent = (name: string): void => {
 // ---------------------------------------------------------------------------
 
 const renderLiteral = (node: AstNode) => {
-  if (node.regex) throw new Error("regexp literals not supported");
+  if (node.regex) {
+    if (typeof node.raw === "string" && node.raw.startsWith("/")) return node.raw;
+    const pattern = String(node.regex.pattern ?? "");
+    const flags = String(node.regex.flags ?? "");
+    const escaped = pattern.replace(/\\/g, "\\\\").replace(/\//g, "\\/");
+    return `/${escaped}/${flags}`;
+  }
   if (node.bigint != null) throw new Error("bigint literals not supported");
   const v = node.value;
   if (v === null) return "null";

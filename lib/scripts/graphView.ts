@@ -1,5 +1,5 @@
-// ts-note: notes/#772c98a1a8cc5ecbde8e4b89a07dc520.ts
-// js-note: notes/#e9faa9216aaba0c11cb1ce717b7005c4.js
+// ts-note: notes/#10cf601faf621fc02f146454b9b22485.ts
+// js-note: notes/#aa893bcfea8aa83aa6a01f3979319bdb.js
 
 import { runPipeline } from "./runPipeline"
 import type { GraphTrace } from "./runPipeline"
@@ -8,10 +8,16 @@ import type { Graph } from "./pipeline"
 import { drawGraph } from "./drawGraph"
 import type { DAG, DrawGraphResult } from "./drawGraph"
 
+export type GraphViewApi = {
+  focusGraph: (node: Graph) => void
+  focusTrace: (trace: GraphTrace) => void
+}
+
 export type GraphViewOptions = {
   onNodeClick?: (node: Graph) => void
   onTraceNodeClick?: (trace: GraphTrace) => void
   runInput?: Jsonable
+  onReady?: (api: GraphViewApi) => void
 }
 
 export const graphView = (
@@ -23,7 +29,8 @@ export const graphView = (
 ): VDom => {
   const onNodeClick = options.onNodeClick
   const onTraceNodeClick = options.onTraceNodeClick
-  const runInput = options.runInput ?? "seed"
+  const runInput = options.runInput == null ? "seed" : options.runInput
+  const onReady = options.onReady
   const paneW = Math.max(200, Math.floor((w - 16) / 2))
   let memo = new Map<Graph, DAG>()
   let memoByHash = new Map<Ref, DAG>()
@@ -32,6 +39,7 @@ export const graphView = (
   let sourceVp: { panX: number, panY: number, vpW: number, vpH: number } | null = null
   let traceVp: { panX: number, panY: number, vpW: number, vpH: number } | null = null
   let expandedLoopKeys = new Set<string>()
+  let traceDagByKey = new Map<Ref, DAG>()
   let refreshView: () => void = () => {}
 
   const formatValue = (x: Jsonable): string => {
@@ -87,14 +95,15 @@ export const graphView = (
   }
 
   const traceDag = (trace: GraphTrace): DAG => {
+    const traceKey = (trace.ref ? trace.ref : hashData({
+      graph: trace.graph as unknown as Jsonable,
+      value: trace.value,
+      count: trace.inputs.length,
+    })) as Ref
     const nodeName = trace.graph.title ? trace.graph.title : trace.graph.$
     if (trace.graph.$ === "loop") {
       const iters = Math.max(0, trace.inputs.length - 1)
-      const loopKey = trace.ref ?? hashData({
-        graph: trace.graph as unknown as Jsonable,
-        value: trace.value,
-        count: trace.inputs.length,
-      })
+      const loopKey = traceKey
       const expanded = expandedLoopKeys.has(loopKey)
       const clickTrace = (t: GraphTrace) => {
         if (sourceGraphCtl) {
@@ -117,6 +126,7 @@ export const graphView = (
         title: nodeName + " (" + iters + ") " + (expanded ? "[-]" : "[+]") + " => " + short(trace.value),
         srcs: expanded ? iterNodes : [],
       }
+      traceDagByKey.set(traceKey, node)
       node.onclick = () => {
         clickTrace(trace)
         toggleExpanded()
@@ -127,6 +137,7 @@ export const graphView = (
       title: nodeName + " => " + short(trace.value),
       srcs: trace.inputs.map(traceDag),
     }
+    traceDagByKey.set(traceKey, node)
     node.onclick = () => {
       if (sourceGraphCtl) {
         const srcNode = memoByHash.get(hashData(trace.graph as unknown as Jsonable))
@@ -220,6 +231,7 @@ export const graphView = (
           HTML.h4({ style: { margin: "0 0 0.4em 0" } }, "trace"),
           lastRef ? HTML.p({ style: { margin: "0 0 0.4em 0", opacity: "0.8" } }, "note: " + lastRef) : HTML.div(),
           (() => {
+            traceDagByKey = new Map<Ref, DAG>()
             traceGraphCtl = drawGraph(
             traceDag(lastTrace),
             paneW,
@@ -259,6 +271,27 @@ export const graphView = (
     root.children = render().children
     ctx.update(root)
   }
+
+  const focusGraph = (node: Graph) => {
+    if (!sourceGraphCtl) return
+    const dagNode = memoByHash.get(hashData(node as unknown as Jsonable))
+    if (!dagNode) return
+    sourceGraphCtl.focus(dagNode)
+  }
+
+  const focusTrace = (trace: GraphTrace) => {
+    if (!traceGraphCtl) return
+    const key = (trace.ref ? trace.ref : hashData({
+      graph: trace.graph as unknown as Jsonable,
+      value: trace.value,
+      count: trace.inputs.length,
+    })) as Ref
+    const dagNode = traceDagByKey.get(key)
+    if (!dagNode) return
+    traceGraphCtl.focus(dagNode)
+  }
+
+  if (onReady) onReady({ focusGraph, focusTrace })
 
   root = render()
   return root

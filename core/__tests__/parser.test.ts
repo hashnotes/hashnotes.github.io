@@ -43,6 +43,12 @@ it("strings", () => {
   testRun('return "a\\t" + "b"', {result: "a\tb"})
 })
 
+it("regex literals", () => {
+  testRun("return /a+/.test('caaad')", {result: true})
+  testRun("return /dog/i.test('DOG')", {result: true})
+  testRun("let parts = 'a  b\\tc'.split(/\\s+/); return parts.length", {result: 3})
+})
+
 it("booleans and comparisons", () => {
   testRun("return true", {result: true})
   testRun("return false", {result: false})

@@ -1,7 +1,8 @@
-// ts-note: notes/#f3b20ee84362f2acc52e0bee23c6e129.ts
-// js-note: notes/#c87778bc1c87dba1a21488dd93e2aaf2.js
+// ts-note: notes/#c059b338a733d87c5740be4641142fc3.ts
+// js-note: notes/#b719098aa24e23d81bd29eb9650d2a95.js
 
 import { graphView } from "./graphView.ts";
+import type { GraphViewApi } from "./graphView.ts";
 import { mkGraph, type Graph } from "./pipeline.ts";
 import type { GraphTrace } from "./runPipeline.ts";
 
@@ -58,6 +59,9 @@ export const view: View = (ctx) => {
 
   let selected: Graph | null = null
   let selectedTrace: GraphTrace | null = null
+  let graphApi: GraphViewApi | null = null
+  let updatePreview: () => void = () => {}
+  const fallbackGraphTitle = graph.title ? graph.title : "graph"
 
   const previewFor = (node: Graph): string =>
     node.$ === "input" ? [
@@ -83,25 +87,21 @@ export const view: View = (ctx) => {
           "fields: input, condition, body",
         ].join("\n")
 
-  const previewForTrace = (trace: GraphTrace): string =>
-    (trace.graph.$ === "loop"
-      ? [
-          "type: loop",
-          "value: " + (typeof trace.value === "string" ? trace.value : JSON.stringify(trace.value)),
-          "iterations: " + Math.max(0, trace.inputs.length - 1),
-          "",
-          "steps:",
-          ...trace.inputs.map((step, i) =>
-            (i === 0 ? "start: " : "iter " + i + ": ")
-            + (typeof step.value === "string" ? step.value : JSON.stringify(step.value))
-          ),
-        ]
-      : [
-      "type: " + trace.graph.$,
-      "value: " + (typeof trace.value === "string" ? trace.value : JSON.stringify(trace.value)),
-      "inputs: " + trace.inputs.length,
-      ...(trace.graph.$ === "logic" ? ["", "code:", trace.graph.code] : []),
-    ]).join("\n")
+  const traceInputEntries = (t: GraphTrace): { label: string, node: GraphTrace }[] => {
+    if (t.graph.$ === "loop") {
+      return t.inputs.map((step, i) => ({ label: i === 0 ? "start" : "iter " + i, node: step }))
+    }
+    if (t.graph.$ === "LLMCall") {
+      return t.inputs.map((step, i) => ({ label: i === 0 ? "prompt" : "input " + i, node: step }))
+    }
+    if (t.graph.$ === "logic") {
+      return t.inputs.map((step, i) => {
+        const k = Object.keys(t.graph.inputs)[i]
+        return { label: k ? k : "input " + (i + 1), node: step }
+      })
+    }
+    return []
+  }
 
   const buildPreview = (): VDom => {
     if (!selected && !selectedTrace) {
@@ -110,9 +110,21 @@ export const view: View = (ctx) => {
       )
     }
     if (selectedTrace) {
+      const val = (x: Jsonable): string => (typeof x === "string" ? x : JSON.stringify(x))
+      const inputs = traceInputEntries(selectedTrace)
+      const nodeHeader = selectedTrace.graph.$ + ": " + (selectedTrace.graph.title ? selectedTrace.graph.title : fallbackGraphTitle)
+      const jump = (node: GraphTrace) => {
+        selectedTrace = node
+        selected = null
+        if (graphApi) {
+          graphApi.focusTrace(node)
+          graphApi.focusGraph(node.graph)
+        }
+        updatePreview()
+      }
       return HTML.div(
-        HTML.p({ style: { margin: "0 0 0.5em 0" } }, "trace node: " + selectedTrace.graph.$),
-        HTML.pre(
+        HTML.p({ style: { margin: "0 0 0.5em 0", fontWeight: "700" } }, nodeHeader),
+        HTML.div(
           {
             style: {
               margin: "0",
@@ -125,7 +137,48 @@ export const view: View = (ctx) => {
               padding: "0.75em",
             }
           },
-          previewForTrace(selectedTrace)
+          HTML.p({ style: { margin: "0" } }, "type: " + selectedTrace.graph.$),
+          selectedTrace.graph.$ === "LLMCall"
+            ? HTML.p({ style: { margin: "0" } }, "model: " + selectedTrace.graph.model)
+            : HTML.div(),
+          selectedTrace.graph.$ === "loop"
+            ? HTML.p({ style: { margin: "0" } }, "iterations: " + Math.max(0, selectedTrace.inputs.length - 1))
+            : HTML.div(),
+          inputs.length > 0
+            ? HTML.div(
+                HTML.p({ style: { margin: "0.5em 0 0 0" } }, "inputs:"),
+                ...inputs.map((entry) => {
+                  const targetTitle = entry.node.graph.title ? entry.node.graph.title : entry.node.graph.$
+                  return HTML.div(
+                    { style: { margin: "0 0 0.25em 0" } },
+                    HTML.span(entry.label + ": "),
+                    HTML.a(
+                      {
+                        href: "#",
+                        style: {
+                          color: "#0a66c2",
+                          textDecoration: "underline",
+                          cursor: "pointer",
+                          fontWeight: "600",
+                        },
+                        onclick: (e) => {
+                          if (e.preventDefault) e.preventDefault()
+                          jump(entry.node)
+                        }
+                      },
+                      targetTitle
+                    ),
+                  )
+                }),
+              )
+            : HTML.div(),
+          selectedTrace.graph.$ === "logic"
+            ? HTML.div(
+                HTML.p({ style: { margin: "0.5em 0 0 0" } }, "code:"),
+                HTML.p({ style: { margin: "0" } }, selectedTrace.graph.code),
+              )
+            : HTML.div(),
+          HTML.p({ style: { margin: "0.5em 0 0 0" } }, "value: " + val(selectedTrace.value)),
         ),
       )
     }
@@ -151,7 +204,7 @@ export const view: View = (ctx) => {
 
   let previewBody = buildPreview()
 
-  const updatePreview = () => {
+  updatePreview = () => {
     let next = buildPreview()
     previewBody.children = next.children
     previewBody.style = next.style
@@ -186,6 +239,9 @@ export const view: View = (ctx) => {
             selectedTrace = trace
             selected = null
             updatePreview()
+          },
+          onReady: (api) => {
+            graphApi = api
           },
           "runInput": "test"
         }),

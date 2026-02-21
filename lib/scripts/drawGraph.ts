@@ -1,5 +1,5 @@
-// ts-note: notes/#45a4b2d3afa5c76ec2e5ec51f17bcb0d.ts
-// js-note: notes/#127317d0e427c2368bc75c936a044831.js
+// ts-note: notes/#1862957a61f2773171da748e8a7065a0.ts
+// js-note: notes/#7ddd9e88b607f54718bdadbcd2d77b3a.js
 export type DAG = {
   title: string,
   srcs: DAG[],
@@ -11,6 +11,7 @@ type Pos = { x: number, y: number }
 export type DrawGraphResult = {
   view: VDom
   highlight: (node: DAG | null) => void
+  focus: (node: DAG | null) => void
   getViewport: () => {
     panX: number
     panY: number
@@ -96,11 +97,16 @@ export const drawGraph = (
   let layerCount = layers.length
   let maxPerLayer = Math.max(1, ...layers.map(l => l.length))
 
+  // label/layout constraints
+  let maxLabelChars = 18
+  let maxLabelLines = 3
+  let maxLabelWidth = 170
+
   // layout world size: can exceed viewport, so pan/zoom has room.
   let padX = 40
   let padY = 30
-  let minGapX = 120
-  let minGapY = 90
+  let minGapX = Math.max(140, maxLabelWidth + 24)
+  let minGapY = 105
   let fullW = Math.max(w, padX * 2 + (maxPerLayer > 1 ? (maxPerLayer - 1) * minGapX : 0))
   let fullH = Math.max(h, padY * 2 + (layerCount > 1 ? (layerCount - 1) * minGapY : 0))
   let gapY = layerCount > 1 ? (fullH - padY * 2) / (layerCount - 1) : 0
@@ -118,6 +124,35 @@ export const drawGraph = (
 
   let fontSize = Math.max(6, Math.min(14, Math.round(fullW / maxPerLayer / 8)))
   let offset = fontSize * 0.7
+  let wrapLabel = (text: string): string[] => {
+    let raw = text.trim()
+    if (raw.length <= maxLabelChars) return [raw]
+    let words = raw.split(/\s+/)
+    let lines: string[] = []
+    let cur = ""
+    words.forEach((w) => {
+      let next = cur.length === 0 ? w : cur + " " + w
+      if (next.length <= maxLabelChars) cur = next
+      else {
+        if (cur.length > 0) lines.push(cur)
+        if (w.length > maxLabelChars) {
+          let rest = w
+          while (rest.length > maxLabelChars) {
+            lines.push(rest.slice(0, maxLabelChars - 1) + "…")
+            rest = rest.slice(maxLabelChars - 1)
+          }
+          cur = rest
+        } else cur = w
+      }
+    })
+    if (cur.length > 0) lines.push(cur)
+    if (lines.length > maxLabelLines) {
+      lines = lines.slice(0, maxLabelLines)
+      let i = lines.length - 1
+      lines[i] = lines[i].slice(0, Math.max(0, maxLabelChars - 1)) + "…"
+    }
+    return lines
+  }
 
   // connected edges per node (index into edges array)
   let nodeEdges = new Map<DAG, number[]>()
@@ -206,12 +241,57 @@ export const drawGraph = (
       layer.forEach(node => {
         let p = pos.get(node)!
         let lit = node === selected
-        let el = HTML.svgText(node.title, {
-          x: "" + p.x, y: "" + p.y,
-          fontSize: "" + fontSize,
-          fill: lit ? "#f90" : "var(--color)",
-          background: "var(--background)",
-        })
+        let lines = wrapLabel(node.title)
+        let lineH = fontSize * 1.2
+        let padX = fontSize * 0.45
+        let padY = fontSize * 0.4
+        let maxLen = Math.max(...lines.map(s => s.length))
+        let bw = Math.max(20, Math.min(maxLabelWidth, maxLen * fontSize * 0.58 + padX * 2))
+        let bh = Math.max(fontSize + padY * 2, lines.length * lineH + padY * 2)
+        let bx = p.x - bw / 2
+        let by = p.y - bh / 2
+        let el: VDom = {
+          tag: "g",
+          textContent: "",
+          id: "",
+          style: {},
+          attrs: {},
+          children: [
+            {
+              tag: "rect",
+              textContent: "",
+              id: "",
+              style: {},
+              attrs: {
+                x: "" + bx,
+                y: "" + by,
+                width: "" + bw,
+                height: "" + bh,
+                rx: "" + Math.max(2, fontSize * 0.35),
+                fill: "var(--background)",
+                stroke: lit ? "#f90" : "var(--color)",
+                "stroke-width": lit ? "1.5" : "1",
+                opacity: "0.95",
+              },
+              children: [],
+            },
+            ...lines.map((line, i) => ({
+              tag: "text",
+              textContent: line,
+              id: "",
+              style: {},
+              attrs: {
+                x: "" + p.x,
+                y: "" + (p.y - (lines.length - 1) * lineH / 2 + i * lineH),
+                fill: lit ? "#f90" : "var(--color)",
+                "font-size": "" + fontSize,
+                "text-anchor": "middle",
+                "dominant-baseline": "middle",
+              },
+              children: [],
+            })),
+          ],
+        }
         el.onclick = () => {
           if (justDragged) {
             justDragged = false
@@ -313,8 +393,21 @@ export const drawGraph = (
     ctx.update(root)
   }
 
+  const focus = (node: DAG | null) => {
+    selected = node
+    if (node && pos.has(node)) {
+      let p = pos.get(node) as Pos
+      panX = p.x - vpW / 2
+      panY = p.y - vpH / 2
+      clamp()
+    }
+    let rebuilt = build()
+    applyRebuild(rebuilt)
+    ctx.update(root)
+  }
+
   const getViewport = () => ({ panX, panY, vpW, vpH })
 
   root = build()
-  return { view: root, highlight, getViewport }
+  return { view: root, highlight, focus, getViewport }
 }
