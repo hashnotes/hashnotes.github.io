@@ -1,5 +1,5 @@
-// ts-note: notes/#ab774f3d45f6a0e4d85e0359f70b4663.ts
-// js-note: notes/#c260c84a0a084c3dd1a46e7c46e1eb96.js
+// ts-note: notes/#45a4b2d3afa5c76ec2e5ec51f17bcb0d.ts
+// js-note: notes/#127317d0e427c2368bc75c936a044831.js
 export type DAG = {
   title: string,
   srcs: DAG[],
@@ -24,7 +24,7 @@ export const drawGraph = (
   w: number,
   h: number,
   ctx: ViewContext,
-  initialViewport?: { panX: number, panY: number, vpW: number, vpH: number },
+  initialViewport: { panX: number, panY: number, vpW: number, vpH: number } | null = null,
 ): DrawGraphResult => {
   // collect all unique nodes and edges
   let allNodes: DAG[] = []
@@ -147,16 +147,24 @@ export const drawGraph = (
   let dragStartY = 0
   let panStartX = 0
   let panStartY = 0
-  let dragTarget: Element | null = null
-  let dragDoc: Document | null = null
-  let onDocMove: ((ev: globalThis.MouseEvent) => void) | null = null
-  let onDocUp: ((ev: globalThis.MouseEvent) => void) | null = null
 
   let applyViewport = (el: Element | null) => {
     if (!el || !el.setAttribute) return
     el.setAttribute("viewBox", "" + panX + " " + panY + " " + vpW + " " + vpH)
     let styleEl = el as unknown as { style?: { cursor?: string } }
     if (styleEl.style) styleEl.style.cursor = dragging ? "grabbing" : "grab"
+  }
+
+  let applyRebuild = (next: VDom) => {
+    root.children = next.children
+    root.attrs = next.attrs
+    root.style = next.style
+    root.textContent = next.textContent
+    root.onclick = next.onclick
+    root.onmousedown = next.onmousedown
+    root.onmouseup = next.onmouseup
+    root.onmousemove = next.onmousemove
+    root.onwheel = next.onwheel
   }
 
   let clamp = () => {
@@ -212,7 +220,7 @@ export const drawGraph = (
           selected = selected === node ? null : node
           if (node.onclick) node.onclick()
           let rebuilt = build()
-          root.children = rebuilt.children
+          applyRebuild(rebuilt)
           ctx.update(root)
         }
         el.style.cursor = "pointer"
@@ -233,12 +241,6 @@ export const drawGraph = (
       justDragged = dragging && dragMoved
       dragging = false
       dragMoved = false
-      if (dragDoc && onDocMove) dragDoc.removeEventListener("mousemove", onDocMove)
-      if (dragDoc && onDocUp) dragDoc.removeEventListener("mouseup", onDocUp)
-      dragDoc = null
-      onDocMove = null
-      onDocUp = null
-      dragTarget = null
     }
 
     svgRoot.onmousedown = (e: any) => {
@@ -249,37 +251,25 @@ export const drawGraph = (
         dragStartY = e.clientY || 0
         panStartX = panX
         panStartY = panY
-        dragTarget = e.currentTarget || null
-        let doc = dragTarget && dragTarget.ownerDocument ? dragTarget.ownerDocument : null
-        dragDoc = doc
-        if (doc) {
-          onDocMove = (me: globalThis.MouseEvent) => {
-            if (!dragging || !dragTarget || me.clientX == null) return
-            let rect = dragTarget.getBoundingClientRect ? dragTarget.getBoundingClientRect() : null
-            if (!rect) return
-            let dx = me.clientX - dragStartX
-            let dy = (me.clientY || 0) - dragStartY
-            if (!dragMoved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return
-            dragMoved = true
-            panX = panStartX - dx * (vpW / rect.width)
-            panY = panStartY - dy * (vpH / rect.height)
-            clamp()
-            applyViewport(dragTarget)
-          }
-          onDocUp = () => {
-            stopDragging()
-            applyViewport(dragTarget)
-          }
-          doc.addEventListener("mousemove", onDocMove)
-          doc.addEventListener("mouseup", onDocUp)
-        }
       }
     }
     svgRoot.onmousemove = (e: any) => {
-      // Drag move is handled via document-level listener to avoid losing drag outside SVG.
-      return
+      if (!dragging || !e || e.clientX == null) return
+      let rect = e.currentTarget && e.currentTarget.getBoundingClientRect ? e.currentTarget.getBoundingClientRect() : null
+      if (!rect) return
+      let dx = e.clientX - dragStartX
+      let dy = (e.clientY || 0) - dragStartY
+      if (!dragMoved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return
+      dragMoved = true
+      panX = panStartX - dx * (vpW / rect.width)
+      panY = panStartY - dy * (vpH / rect.height)
+      clamp()
+      applyViewport(e.currentTarget || null)
     }
     svgRoot.onmouseup = () => {
+      stopDragging()
+    }
+    ;(svgRoot as any).onmouseleave = () => {
       stopDragging()
     }
     svgRoot.onwheel = (e: any) => {
@@ -319,7 +309,7 @@ export const drawGraph = (
   const highlight = (node: DAG | null) => {
     selected = node
     let rebuilt = build()
-    root.children = rebuilt.children
+    applyRebuild(rebuilt)
     ctx.update(root)
   }
 

@@ -100,6 +100,7 @@ declare const HTML: {
   input: (...content: HtmlContent[]) => VDom;
   textarea: (...content: HtmlContent[]) => VDom;
   pre: (...content: HtmlContent[]) => VDom;
+  svg: (...content: HtmlContent[]) => VDom;
   svgPath: (
     pathData: string | string[],
     options?: {

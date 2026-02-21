@@ -224,6 +224,7 @@ const popup = (...cs:VDom[])=>{
 
 export const HTML = {
   div,
+  svg,
   span: mkDom("span"),
   p: mkDom("p"),
   h1: mkDom("h1"),

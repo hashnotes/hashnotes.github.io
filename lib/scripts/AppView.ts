@@ -1,5 +1,5 @@
-// ts-note: notes/#f770eb754e395d72245bdbeb97b7ba4b.ts
-// js-note: notes/#163a88a134627195517b40660494bb1e.js
+// ts-note: notes/#f3b20ee84362f2acc52e0bee23c6e129.ts
+// js-note: notes/#c87778bc1c87dba1a21488dd93e2aaf2.js
 
 import { graphView } from "./graphView.ts";
 import { mkGraph, type Graph } from "./pipeline.ts";
@@ -13,12 +13,13 @@ export const view: View = (ctx) => {
 
 
   let { input, logic, llmCall, loop } = mkGraph();
-  let inp = input();
+  let inp = input("animals list");
 
   let llmcall = llmCall(
     logic(
       { data: inp },
-      "return 'Given this JSON array of animal names: ' + JSON.stringify(data) + '. Return JSON object: {\"animal\": \"<name>\"}.'"
+      "return 'Given this JSON array of animal names: ' + JSON.stringify(data) + '. Return JSON object: {\"animal\": \"<name>\"}. The name must be a real animal and must NOT already be present in the input list.'",
+      "build LLM prompt"
     ),
     "openai/gpt-oss-120b",
     {
@@ -28,7 +29,8 @@ export const view: View = (ctx) => {
       },
       required: ["animal"],
       additionalProperties: false,
-    }
+    },
+    "new animal via LLM"
   )
 
 
@@ -41,14 +43,16 @@ export const view: View = (ctx) => {
 
 
   let graph = loop(
-    logic({}, "return ['cat', 'dog']"),
-    logic({ x: inp }, "return x.length < 6"),
+    logic({}, "return ['cat', 'dog']", "seed list"),
+    logic({ x: inp }, "return x.length < 6", "continue until size 6"),
     logic({
         ls: inp,
         newanimal: llmcall
       },
-      "return ls.concat([newanimal.animal])"
-    )
+      "return ls.concat([newanimal.animal])",
+      "append new animal"
+    ),
+    "grow animal list"
   )
   
 
@@ -56,9 +60,13 @@ export const view: View = (ctx) => {
   let selectedTrace: GraphTrace | null = null
 
   const previewFor = (node: Graph): string =>
-    node.$ === "input" ? "type: input"
+    node.$ === "input" ? [
+      "type: input",
+      ...(node.title ? ["title: " + node.title] : []),
+    ].join("\n")
       : node.$ === "logic" ? [
         "type: logic",
+        ...(node.title ? ["title: " + node.title] : []),
         "inputs: " + Object.keys(node.inputs).join(", "),
         "",
         "code:",
@@ -66,10 +74,12 @@ export const view: View = (ctx) => {
       ].join("\n")
       : node.$ === "LLMCall" ? [
         "type: LLMCall",
+        ...(node.title ? ["title: " + node.title] : []),
         "model: " + node.model,
       ].join("\n")
         : [
           "type: loop",
+          ...(node.title ? ["title: " + node.title] : []),
           "fields: input, condition, body",
         ].join("\n")
 

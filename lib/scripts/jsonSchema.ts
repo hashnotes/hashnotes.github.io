@@ -1,12 +1,12 @@
-// ts-note: notes/#7cb0cec4f7628cb81a5c24fca6db5d69.ts
-// js-note: notes/#639cba64acff3ec4af6dac3512527ff5.js
+// ts-note: notes/#0c215aef0f107a617a9bff722d4e7836.ts
+// js-note: notes/#f9f82277894c03d4831ff6dc1ad5f34b.js
 export type JsonSchema =
   | { type: "string" }
   | { type: "number" }
   | { type: "boolean" }
   | { type: "null" }
   | { type: "array", items?: JsonSchema }
-  | { type: "object", properties?: { [k: string]: JsonSchema }, required?: string[] }
+  | { type: "object", properties?: { [k: string]: JsonSchema }, required?: string[], additionalProperties?: false | JsonSchema}
   | { type: "any" }
 
 export const jsonSchema = () => {
@@ -21,67 +21,29 @@ export const jsonSchema = () => {
   }
 
   let validate = (s: JsonSchema, value: Jsonable, path: string = "$"): string[] => {
-    if (s.type === "any") return []
+    let errs: string[] = [];
+    const go = (s:JsonSchema, value: Jsonable, path: string) =>{
+      let err = (msg:string, key:string = "") => errs.push(path + (key ? "." + key : "") + ": " + msg)
+      if (s.type == "any") return
+      else if (s.type == "null") {if (value != null) err("expected null, got:"+typeof value)}
+      else if (s.type == "string" || s.type == "number" || s.type == "boolean") {if (typeof value != s.type) err("expected "+s.type+ " got:"+typeof value)}
+      else if (s.type == "array"){
+        if (!Array.isArray(value)) return err("expected array, got:" + typeof value)
+        if (s.items) value.forEach((x, i)=>go(s.items!, x, path+"["+i+"]"))
+      }else if (s.type == "object"){
+        if (typeof value != "object" || Array.isArray(value) || value == null) return err("expected Object");
 
-    if (s.type === "null") {
-      if (value !== null) return [path + ": expected null, got " + typeof value]
-      return []
-    }
-
-    if (s.type === "string") {
-      if (typeof value !== "string") return [path + ": expected string, got " + typeof value]
-      return []
-    }
-
-    if (s.type === "number") {
-      if (typeof value !== "number") return [path + ": expected number, got " + typeof value]
-      return []
-    }
-
-    if (s.type === "boolean") {
-      if (typeof value !== "boolean") return [path + ": expected boolean, got " + typeof value]
-      return []
-    }
-
-    if (s.type === "array") {
-      if (!Array.isArray(value)) return [path + ": expected array, got " + typeof value]
-      if (!s.items) return []
-      let errs: string[] = []
-      value.forEach((item, i) => {
-        errs.push(...validate(s.items!, item as Jsonable, path + "[" + i + "]"))
-      })
-      return errs
-    }
-
-    if (s.type === "object") {
-      if (value === null || typeof value !== "object" || Array.isArray(value)) {
-        return [path + ": expected object, got " + (value === null ? "null" : typeof value)]
-      }
-      let errs: string[] = []
-      let obj = value as { [k: string]: Jsonable }
-
-      if (s.required) {
-        s.required.forEach(key => {
-          let keys = Object.keys(obj)
-          if (!keys.includes(key)) errs.push(path + "." + key + ": required property missing")
+        ;(s.required || []).forEach(req=> {if (value[req] == undefined) err("missing required property:" + req)})
+        let properties = s.properties ?? {};
+        Object.entries(value).forEach(([key,val])=>{
+          if (properties[key] != undefined) go(properties[key], val, path + "." + key)
+          else if (s.additionalProperties == false) err("unnalowed additonal property:"+key)
+          else if(s.additionalProperties) go(s.additionalProperties, val, path + "." + key)
         })
       }
+    };
 
-      if (s.properties) {
-        let propKeys = Object.keys(s.properties)
-        propKeys.forEach(key => {
-          let propSchema = s.properties![key]
-          let keys = Object.keys(obj)
-          if (keys.includes(key)) {
-            errs.push(...validate(propSchema, obj[key], path + "." + key))
-          }
-        })
-      }
-
-      return errs
-    }
-
-    return [path + ": unknown schema type"]
+    return errs
   }
 
   return { schema, validate }

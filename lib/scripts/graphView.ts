@@ -1,5 +1,5 @@
-// ts-note: notes/#888015194700759ff172af57648c37dc.ts
-// js-note: notes/#8d805aebf0262a3d71b10b7970f14938.js
+// ts-note: notes/#772c98a1a8cc5ecbde8e4b89a07dc520.ts
+// js-note: notes/#e9faa9216aaba0c11cb1ce717b7005c4.js
 
 import { runPipeline } from "./runPipeline"
 import type { GraphTrace } from "./runPipeline"
@@ -28,6 +28,9 @@ export const graphView = (
   let memo = new Map<Graph, DAG>()
   let memoByHash = new Map<Ref, DAG>()
   let sourceGraphCtl: DrawGraphResult | null = null
+  let traceGraphCtl: DrawGraphResult | null = null
+  let sourceVp: { panX: number, panY: number, vpW: number, vpH: number } | null = null
+  let traceVp: { panX: number, panY: number, vpW: number, vpH: number } | null = null
   let expandedLoopKeys = new Set<string>()
   let refreshView: () => void = () => {}
 
@@ -84,6 +87,7 @@ export const graphView = (
   }
 
   const traceDag = (trace: GraphTrace): DAG => {
+    const nodeName = trace.graph.title ? trace.graph.title : trace.graph.$
     if (trace.graph.$ === "loop") {
       const iters = Math.max(0, trace.inputs.length - 1)
       const loopKey = trace.ref ?? hashData({
@@ -110,7 +114,7 @@ export const graphView = (
         onclick: () => clickTrace(step),
       }))
       const node: DAG = {
-        title: "loop (" + iters + ") " + (expanded ? "[-]" : "[+]") + " => " + short(trace.value),
+        title: nodeName + " (" + iters + ") " + (expanded ? "[-]" : "[+]") + " => " + short(trace.value),
         srcs: expanded ? iterNodes : [],
       }
       node.onclick = () => {
@@ -120,7 +124,7 @@ export const graphView = (
       return node
     }
     const node: DAG = {
-      title: trace.graph.$ + " => " + short(trace.value),
+      title: nodeName + " => " + short(trace.value),
       srcs: trace.inputs.map(traceDag),
     }
     node.onclick = () => {
@@ -135,7 +139,7 @@ export const graphView = (
 
   let todag = (g:Graph):DAG =>{
     if (memo.has(g)) return memo.get(g) as DAG
-    let node: DAG = { title: g.$, srcs: [] }
+    let node: DAG = { title: g.title ? g.title : g.$, srcs: [] }
     if (onNodeClick) {
       node.onclick = () => onNodeClick(g)
     }
@@ -197,7 +201,7 @@ export const graphView = (
       },
       HTML.h4({ style: { margin: "0 0 0.4em 0" } }, "pipeline"),
       (() => {
-        sourceGraphCtl = drawGraph(todag(graph), paneW, h, ctx)
+        sourceGraphCtl = drawGraph(todag(graph), paneW, h, ctx, sourceVp || null)
         return sourceGraphCtl.view
       })(),
     )
@@ -215,12 +219,16 @@ export const graphView = (
           },
           HTML.h4({ style: { margin: "0 0 0.4em 0" } }, "trace"),
           lastRef ? HTML.p({ style: { margin: "0 0 0.4em 0", opacity: "0.8" } }, "note: " + lastRef) : HTML.div(),
-          drawGraph(
+          (() => {
+            traceGraphCtl = drawGraph(
             traceDag(lastTrace),
             paneW,
             h,
             ctx,
-          ).view,
+            traceVp || null,
+            )
+            return traceGraphCtl.view
+          })(),
         )
       : HTML.div(
           {
@@ -246,6 +254,8 @@ export const graphView = (
   }
 
   refreshView = () => {
+    if (sourceGraphCtl) sourceVp = sourceGraphCtl.getViewport()
+    if (traceGraphCtl) traceVp = traceGraphCtl.getViewport()
     root.children = render().children
     ctx.update(root)
   }
