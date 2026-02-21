@@ -1,8 +1,9 @@
-// ts-note: notes/#5f9b26b9cad62153efe54b8e8cdf4af6.ts
-// js-note: notes/#e14511dc186e5b0bef76e80dceb957d0.js
+// ts-note: notes/#072daff5d639d4b6af3b92250c626fe9.ts
+// js-note: notes/#e884f464a3907407d46f5ba805e0c224.js
 
 import { graphView } from "./graphView.ts";
 import type { GraphViewApi } from "./graphView.ts";
+import { JsonSchema } from "./jsonSchema.ts";
 import { mkGraph, type Graph } from "./pipeline.ts";
 import type { GraphTrace } from "./runPipeline.ts";
 
@@ -11,50 +12,39 @@ export const view: View = (ctx) => {
   const graphAreaW = Math.max(420, ctx.width - previewPaneW - 64)
   const graphAreaH = Math.max(280, Math.floor(ctx.height * 0.66))
 
-
-
   let { input, logic, llmCall, loop } = mkGraph();
   let inp = input("animals list");
 
-  let llmcall = llmCall(
-    logic(
-      { data: inp },
-      "return 'Given this JSON array of animal names: ' + JSON.stringify(data) + '. Return JSON object: {\"animal\": \"<name>\"}. The name must be a real animal and must NOT already be present in the input list.'",
-      "build LLM prompt"
-    ),
-    "openai/gpt-oss-120b",
-    {
-      type: "object",
-      properties: {
-        animal: { type: "string" }
-      },
-      required: ["animal"],
-      additionalProperties: false,
-    },
-    "new animal via LLM"
-  )
 
-
-  // llmcall = logic(
-  //   {
-  //     x: input(),
-  //   },
-  //   "return 'cat'"
-  // )
-
+  let gptoss120 = (prompt:Graph, schema:JsonSchema = {type:"any"}) => llmCall(prompt,"openai/gpt-oss-120b",schema )
 
   let graph = loop(
     logic({}, "return ['cat', 'dog']", "seed list"),
     logic({ x: inp }, "return x.length < 6", "continue until size 6"),
     logic({
         ls: inp,
-        newanimal: llmcall
+        newanimal: gptoss120(
+          logic(
+            { data: inp },
+            "return 'Given this JSON array of animal names: ' + JSON.stringify(data) + '. Return JSON object: {\"animal\": \"<name>\"}. The name must be a real animal and must NOT already be present in the input list.'",
+            "build LLM prompt"
+          ),{
+            type: "object",
+            properties: {
+              animal: { type: "string" }
+            },
+            required: ["animal"],
+            additionalProperties: false,
+          },
+        )
       },
       "return ls.concat([newanimal.animal])",
       "append new animal"
     ),
     "grow animal list"
   )
+
+
   
 
   let selected: Graph | null = null
@@ -68,6 +58,11 @@ export const view: View = (ctx) => {
       "type: input",
       ...(node.title ? ["title: " + node.title] : []),
     ].join("\n")
+      : node.$ === "const" ? [
+        "type: const",
+        ...(node.title ? ["title: " + node.title] : []),
+        "value: " + (typeof node.value === "string" ? node.value : JSON.stringify(node.value)),
+      ].join("\n")
       : node.$ === "logic" ? [
         "type: logic",
         ...(node.title ? ["title: " + node.title] : []),
@@ -87,16 +82,16 @@ export const view: View = (ctx) => {
           "fields: input, condition, body",
         ].join("\n")
 
-  const traceInputEntries = (t: GraphTrace): { label: string, node: GraphTrace }[] => {
-    if (t.graph.$ === "loop") {
-      return t.inputs.map((step, i) => ({ label: i === 0 ? "start" : "iter " + i, node: step }))
+  const traceInputEntries = ({graph, inputs}: GraphTrace): { label: string, node: GraphTrace }[] => {
+    if (graph.$ === "loop") {
+      return inputs.map((step, i) => ({ label: i === 0 ? "start" : "iter " + i, node: step }))
     }
-    if (t.graph.$ === "LLMCall") {
-      return t.inputs.map((step, i) => ({ label: i === 0 ? "prompt" : "input " + i, node: step }))
+    if (graph.$ === "LLMCall") {
+      return inputs.map((step, i) => ({ label: i === 0 ? "prompt" : "input " + i, node: step }))
     }
-    if (t.graph.$ === "logic") {
-      return t.inputs.map((step, i) => {
-        const k = Object.keys(t.graph.inputs)[i]
+    if (graph.$ === "logic") {
+      return inputs.map((step, i) => {
+        const k = Object.keys(graph.inputs)[i]
         return { label: k ? k : "input " + (i + 1), node: step }
       })
     }
@@ -161,7 +156,7 @@ export const view: View = (ctx) => {
                           cursor: "pointer",
                           fontWeight: "600",
                         },
-                        onclick: (e) => {
+                        onclick: (e:any) => {
                           if (e.preventDefault) e.preventDefault()
                           jump(entry.node)
                         }

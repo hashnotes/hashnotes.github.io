@@ -1,5 +1,5 @@
-// ts-note: notes/#e20c041f223a3a2418722cf0cf2674e5.ts
-// js-note: notes/#759e9e8d08d3fa9dbcc78ceca2cd5f32.js
+// ts-note: notes/#e2f0aeccb88a586e020e79b60cefebe3.ts
+// js-note: notes/#a73fc1e1c3487965764fd8a4beb9b54a.js
 
 import { runPipeline } from "./runPipeline"
 import type { GraphTrace } from "./runPipeline"
@@ -38,6 +38,10 @@ export const graphView = (
   let traceGraphCtl: DrawGraphResult | null = null
   let sourceVp: { panX: number, panY: number, vpW: number, vpH: number } | null = null
   let traceVp: { panX: number, panY: number, vpW: number, vpH: number } | null = null
+  let sourcePaneSize: { w: number, h: number } | null = { w: paneW, h }
+  let tracePaneSize: { w: number, h: number } | null = { w: paneW, h }
+  let sourceResizeArmed = false
+  let traceResizeArmed = false
   let expandedLoopKeys = new Set<string>()
   let expandedIterKeys = new Set<string>()
   let traceDagByKey = new Map<Ref, DAG>()
@@ -45,15 +49,32 @@ export const graphView = (
   let selectedSourceKey: Ref | null = null
   let refreshView: () => void = () => {}
 
+  const stripUndefined = (x: unknown): Jsonable => {
+    if (x === null || typeof x === "string" || typeof x === "number" || typeof x === "boolean") {
+      return x as Jsonable
+    }
+    if (Array.isArray(x)) return x.map(stripUndefined) as Jsonable
+    if (x && typeof x === "object") {
+      const out: { [key: string]: Jsonable } = {}
+      Object.entries(x as Record<string, unknown>).forEach(([k, v]) => {
+        if (typeof v !== "undefined") out[k] = stripUndefined(v)
+      })
+      return out
+    }
+    return null
+  }
+
+  const safeHash = (x: unknown): Ref => hashData(stripUndefined(x))
+
   const traceKeyOf = (trace: GraphTrace): Ref =>
-    (trace.ref ? trace.ref : hashData({
+    (trace.ref ? trace.ref : safeHash({
       graph: trace.graph as unknown as Jsonable,
       value: trace.value,
       count: trace.inputs.length,
     })) as Ref
 
   const sourceKeyOf = (g: Graph): Ref =>
-    hashData(g as unknown as Jsonable)
+    safeHash(g as unknown as Jsonable)
 
   const formatValue = (x: Jsonable): string => {
     if (typeof x === "string") return x
@@ -64,6 +85,59 @@ export const graphView = (
   const short = (x: Jsonable, n = 20): string => {
     const s = formatValue(x)
     return s.length <= n ? s : s.slice(0, n - 1) + "…"
+  }
+
+  const captureSize = (target: Element | null): { w: number, h: number } | null => {
+    if (!target) return null
+    const rect = (target as unknown as { getBoundingClientRect?: () => { width: number, height: number } }).getBoundingClientRect
+      ? (target as unknown as { getBoundingClientRect: () => { width: number, height: number } }).getBoundingClientRect()
+      : null
+    const w = rect ? Math.round(rect.width) : 0
+    const h = rect ? Math.round(rect.height) : 0
+    if (w < 1 || h < 1) return null
+    return { w, h }
+  }
+
+  const applyPaneResize = (
+    next: { w: number, h: number } | null,
+    current: { w: number, h: number } | null,
+    set: (s: { w: number, h: number }) => void,
+  ) => {
+    if (!next) return
+    const changed = !current || Math.abs(next.w - current.w) > 6 || Math.abs(next.h - current.h) > 6
+    if (!changed) return
+    set(next)
+  }
+
+  const armResize = (e: any): boolean => {
+    const t = e && e.currentTarget
+    if (!t || !t.getBoundingClientRect || e == null || e.clientX == null || e.clientY == null) return false
+    const r = t.getBoundingClientRect()
+    const edge = 18
+    return (r.right - e.clientX) <= edge && (r.bottom - e.clientY) <= edge
+  }
+
+  const paneStyle = (
+    bordered: string,
+    size: { w: number, h: number } | null,
+  ): Record<string, string> => {
+    const base: Record<string, string> = {
+      minWidth: "0",
+      border: bordered,
+      background: "var(--background)",
+      padding: "0.6em",
+      overflow: "auto",
+      resize: "both",
+      minHeight: "220px",
+    }
+    if (!size) {
+      base.flex = "1 1 0"
+      return base
+    }
+    base.flex = "0 0 auto"
+    base.width = "" + size.w + "px"
+    base.height = "" + size.h + "px"
+    return base
   }
 
   type StoredGraphTrace = {
@@ -108,7 +182,7 @@ export const graphView = (
   }
 
   const traceDag = (trace: GraphTrace, loopPrevSource: DAG | null = null): DAG => {
-    const traceKey = (trace.ref ? trace.ref : hashData({
+    const traceKey = (trace.ref ? trace.ref : safeHash({
       graph: trace.graph as unknown as Jsonable,
       value: trace.value,
       count: trace.inputs.length,
@@ -122,7 +196,7 @@ export const graphView = (
       traceDagByKey.set(traceKey, node)
       node.onclick = () => {
         if (sourceGraphCtl) {
-          const srcNode = memoByHash.get(hashData(trace.graph as unknown as Jsonable))
+          const srcNode = memoByHash.get(safeHash(trace.graph as unknown as Jsonable))
           sourceGraphCtl.highlight(srcNode ? srcNode : null)
         }
         if (onTraceNodeClick) onTraceNodeClick(trace)
@@ -150,7 +224,7 @@ export const graphView = (
       const iterNodes: DAG[] = []
       let prev: DAG | null = null
       trace.inputs.forEach((step, i) => {
-        const stepKey = (step.ref ? step.ref : hashData({
+        const stepKey = (step.ref ? step.ref : safeHash({
           graph: step.graph as unknown as Jsonable,
           value: step.value,
           count: step.inputs.length,
@@ -210,8 +284,9 @@ export const graphView = (
       node.onclick = () => onNodeClick(g)
     }
     memo.set(g, node)
-    memoByHash.set(hashData(g as unknown as Jsonable), node)
+    memoByHash.set(safeHash(g as unknown as Jsonable), node)
     node.srcs = (g.$ == "input" ? []
+      : g.$ == "const" ? []
       : g.$ == "logic" ? Object.values(g.inputs)
       : g.$ == "LLMCall" ? [g.prompt]
       : [g.input, g.body, g.condition]).map(todag)
@@ -257,19 +332,22 @@ export const graphView = (
 
     const sourcePane = HTML.div(
       {
-        style: {
-          minWidth: "0",
-          border: "1px solid var(--color)",
-          background: "var(--background)",
-          padding: "0.6em",
-          overflow: "auto",
-          resize: "both",
-          minHeight: "220px",
-        }
+        style: paneStyle("1px solid var(--color)", sourcePaneSize),
+        onmousedown: (e: any) => {
+          sourceResizeArmed = armResize(e)
+        },
+        onmouseup: (e: any) => {
+          if (!sourceResizeArmed) return
+          sourceResizeArmed = false
+          const next = captureSize(e.currentTarget || null)
+          applyPaneResize(next, sourcePaneSize, (s) => { sourcePaneSize = s })
+        },
       },
       HTML.h4({ style: { margin: "0 0 0.4em 0" } }, "pipeline"),
       (() => {
-        sourceGraphCtl = drawGraph(todag(graph), paneW, h, ctx, sourceVp || null)
+        const drawW = sourcePaneSize ? Math.max(200, sourcePaneSize.w - 20) : paneW
+        const drawH = sourcePaneSize ? Math.max(180, sourcePaneSize.h - 48) : h
+        sourceGraphCtl = drawGraph(todag(graph), drawW, drawH, ctx, sourceVp || null)
         return sourceGraphCtl.view
       })(),
     )
@@ -277,24 +355,27 @@ export const graphView = (
     const tracePane = lastTrace
       ? HTML.div(
           {
-            style: {
-              minWidth: "0",
-              border: "1px solid var(--color)",
-              background: "var(--background)",
-              padding: "0.6em",
-              overflow: "auto",
-              resize: "both",
-              minHeight: "220px",
-            }
+            style: paneStyle("1px solid var(--color)", tracePaneSize),
+            onmousedown: (e: any) => {
+              traceResizeArmed = armResize(e)
+            },
+            onmouseup: (e: any) => {
+              if (!traceResizeArmed) return
+              traceResizeArmed = false
+              const next = captureSize(e.currentTarget || null)
+              applyPaneResize(next, tracePaneSize, (s) => { tracePaneSize = s })
+            },
           },
           HTML.h4({ style: { margin: "0 0 0.4em 0" } }, "trace"),
           lastRef ? HTML.p({ style: { margin: "0 0 0.4em 0", opacity: "0.8" } }, "note: " + lastRef) : HTML.div(),
           (() => {
             traceDagByKey = new Map<Ref, DAG>()
+            const drawW = tracePaneSize ? Math.max(200, tracePaneSize.w - 20) : paneW
+            const drawH = tracePaneSize ? Math.max(180, tracePaneSize.h - 48) : h
             traceGraphCtl = drawGraph(
             traceDag(lastTrace),
-            paneW,
-            h,
+            drawW,
+            drawH,
             ctx,
             traceVp || null,
             )
@@ -303,15 +384,16 @@ export const graphView = (
         )
       : HTML.div(
           {
-            style: {
-              minWidth: "0",
-              border: "1px dashed var(--color)",
-              background: "var(--background)",
-              padding: "0.6em",
-              overflow: "auto",
-              resize: "both",
-              minHeight: "220px",
-            }
+            style: paneStyle("1px dashed var(--color)", tracePaneSize),
+            onmousedown: (e: any) => {
+              traceResizeArmed = armResize(e)
+            },
+            onmouseup: (e: any) => {
+              if (!traceResizeArmed) return
+              traceResizeArmed = false
+              const next = captureSize(e.currentTarget || null)
+              applyPaneResize(next, tracePaneSize, (s) => { tracePaneSize = s })
+            },
           },
           HTML.h4({ style: { margin: "0 0 0.4em 0", opacity: "0.8" } }, "trace"),
           HTML.p({ style: { margin: "0", opacity: "0.7" } }, "Run pipeline to generate trace."),

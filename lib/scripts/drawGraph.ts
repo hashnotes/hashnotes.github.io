@@ -1,5 +1,5 @@
-// ts-note: notes/#40da8d7d79ef1630a67e6716563dae5b.ts
-// js-note: notes/#a45ae5d8a2b45e6bc1a28016ae2b3036.js
+// ts-note: notes/#9029d7d6706f0c066dac0fb2cc96c075.ts
+// js-note: notes/#08b915d59c7ab13b65f29c3376766c8e.js
 export type DAG = {
   title: string,
   srcs: DAG[],
@@ -170,7 +170,6 @@ export const drawGraph = (
   let panY = initialViewport ? initialViewport.panY : (maxYCoord - vpH + padY)
   let dragging = false
   let dragMoved = false
-  let justDragged = false
   let dragStartX = 0
   let dragStartY = 0
   let panStartX = 0
@@ -287,10 +286,6 @@ export const drawGraph = (
           ],
         }
         el.onclick = () => {
-          if (justDragged) {
-            justDragged = false
-            return
-          }
           selected = selected === node ? null : node
           if (node.onclick) node.onclick()
           applyRebuild(build())
@@ -303,16 +298,14 @@ export const drawGraph = (
 
     let svgRoot = HTML.svgPath(
       normalPaths,
-      { viewBox: "" + panX + " " + panY + " " + vpW + " " + vpH, width: "100%", height: "100%" },
+      { viewBox: "" + panX + " " + panY + " " + vpW + " " + vpH, width: "" + w, height: "" + h },
     )
     svgRoot.style.cursor = dragging ? "grabbing" : "grab"
     svgRoot.style.userSelect = "none"
     svgRoot.style.touchAction = "none"
     svgRoot.style.display = "block"
-    svgRoot.style.minWidth = "" + w + "px"
-    svgRoot.style.minHeight = "" + h + "px"
 
-    let stopDragging = () => { justDragged = dragging && dragMoved; dragging = false; dragMoved = false }
+    let stopDragging = () => { dragging = false; dragMoved = false }
 
     svgRoot.onmousedown = (e: any) => {
       if (e && e.clientX != null) {

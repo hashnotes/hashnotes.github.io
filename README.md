@@ -55,6 +55,12 @@ Run all checks:
 bun run check
 ```
 
+After frontend/view changes, run delayed browser log validation:
+
+```bash
+sleep 1 && cat lib/scripts/browser-errors.log
+```
+
 Run all tests:
 
 ```bash

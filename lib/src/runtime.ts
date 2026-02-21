@@ -239,14 +239,11 @@ export const callViewClient = async (
 
   // Inlined body — args[0] is the window object.
   return (upper: ViewContext): VDom => {
-    const wrappedUpper: ViewContext = {
-      ...upper,
-      onUserEvent: () => {
-        // Refill budget on explicit user interaction; keep shared cap to preserve anti-loop behavior.
-        fuelRef.value = fuelBudget;
-      },
-    }
-    const result = runWithFuelShared(fnNote, fuelRef, { ...baseEnv, args: [wrappedUpper] });
+    // Install callback on the actual ViewContext object used by renderDom event dispatch.
+    upper.onUserEvent = () => {
+      fuelRef.value = fuelBudget;
+    };
+    const result = runWithFuelShared(fnNote, fuelRef, { ...baseEnv, args: [upper] });
     if ("err" in result) throw new Error(result.err);
     return result.ok as VDom;
   };

@@ -190,4 +190,7 @@ bun run dev
 
 # run script compiler/watcher
 bun run dev:scripts
+
+# validation pass for browser/runtime errors (delayed log write)
+sleep 1 && cat lib/scripts/browser-errors.log
 ```

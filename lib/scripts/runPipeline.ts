@@ -1,5 +1,5 @@
-// ts-note: notes/#985153bc752b30bcd2deaf291cd2f68b.ts
-// js-note: notes/#46e0a0042f4af867472aeede71f9724a.js
+// ts-note: notes/#0421a3f757329cb22798cd9d534b6791.ts
+// js-note: notes/#6c4be7cff029ca13114d095b6086b99e.js
 import type { Graph } from "./pipeline"
 import { openRouterLocal } from "./openRouterLocal"
 
@@ -8,6 +8,25 @@ export type GraphTrace = {
   graph: Graph
   inputs: GraphTrace[]
   value: Jsonable
+}
+
+const isObj = (x: Jsonable): x is { [key: string]: Jsonable } =>
+  !!x && typeof x === "object" && !Array.isArray(x)
+
+const deepFreeze = (x: Jsonable): Jsonable => {
+  if (Array.isArray(x)) {
+    x.forEach((v) => {
+      if (v && typeof v === "object") deepFreeze(v as Jsonable)
+    })
+    return Object.freeze(x) as unknown as Jsonable
+  }
+  if (isObj(x)) {
+    Object.values(x).forEach((v) => {
+      if (v && typeof v === "object") deepFreeze(v as Jsonable)
+    })
+    return Object.freeze(x) as unknown as Jsonable
+  }
+  return x
 }
 
 const toPrompt = (x: Jsonable): string => {
@@ -20,12 +39,14 @@ export const runPipeline = async (graph: Graph, input: Jsonable): Promise<GraphT
   const evalLogic = (inputs: {[key: string]: Jsonable}, code: string): Jsonable => {
     if (code.indexOf("return") < 0) return null
     const keys = Object.keys(inputs)
-    const vals = Object.values(inputs)
-    return Function(...keys, code)(...vals) as Jsonable
+    const vals = Object.values(inputs).map((v) => deepFreeze(v))
+    const out = Function(...keys, code)(...vals) as Jsonable
+    return deepFreeze(out)
   }
 
   const evalGraph = async (g: Graph, i: Jsonable): Promise<Jsonable> => {
     if (g.$ === "input") return i
+    if (g.$ === "const") return deepFreeze(g.value)
     if (g.$ === "logic") {
       const keys = Object.keys(g.inputs)
       const vals = await Promise.all(keys.map((k) => evalGraph(g.inputs[k], i)))
@@ -49,6 +70,7 @@ export const runPipeline = async (graph: Graph, input: Jsonable): Promise<GraphT
 
   const go = async (g: Graph, i: Jsonable): Promise<GraphTrace> => {
     if (g.$ === "input") return { graph: g, inputs: [], value: i }
+    if (g.$ === "const") return { graph: g, inputs: [], value: deepFreeze(g.value) }
     if (g.$ === "logic") {
       const inputs = await Promise.all(Object.values(g.inputs).map((x) => go(x, i)))
       const values = inputs.map((x) => x.value)
