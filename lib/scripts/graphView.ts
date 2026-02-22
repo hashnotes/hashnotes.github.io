@@ -1,5 +1,5 @@
-// ts-note: notes/#e2f0aeccb88a586e020e79b60cefebe3.ts
-// js-note: notes/#a73fc1e1c3487965764fd8a4beb9b54a.js
+// ts-note: notes/#aef17143e395caec15c413dad11d7995.ts
+// js-note: notes/#c8a836abd92e6d530c79dca5a973aa60.js
 
 import { runPipeline } from "./runPipeline"
 import type { GraphTrace } from "./runPipeline"
@@ -10,6 +10,7 @@ import type { DAG, DrawGraphResult } from "./drawGraph"
 
 export type GraphViewApi = {
   focusGraph: (node: Graph) => void
+  highlightGraph: (node: Graph | null) => void
   focusTrace: (trace: GraphTrace) => void
 }
 
@@ -288,7 +289,9 @@ export const graphView = (
     node.srcs = (g.$ == "input" ? []
       : g.$ == "const" ? []
       : g.$ == "logic" ? Object.values(g.inputs)
+      : g.$ == "IfElse" ? [g.condition, g.then, g.else]
       : g.$ == "LLMCall" ? [g.prompt]
+      : g.$ == "FunctionCall" ? [g.function, ...Object.values(g.inputs)]
       : [g.input, g.body, g.condition]).map(todag)
     return node
   }
@@ -432,6 +435,16 @@ export const graphView = (
     sourceGraphCtl.focus(dagNode)
   }
 
+  const highlightGraph = (node: Graph | null) => {
+    if (!sourceGraphCtl) return
+    if (!node) {
+      sourceGraphCtl.highlight(null)
+      return
+    }
+    const dagNode = memoByHash.get(sourceKeyOf(node))
+    sourceGraphCtl.highlight(dagNode ? dagNode : null)
+  }
+
   const focusTrace = (trace: GraphTrace) => {
     if (!traceGraphCtl) return
     selectedTraceKey = traceKeyOf(trace)
@@ -441,7 +454,7 @@ export const graphView = (
     traceGraphCtl.focus(dagNode)
   }
 
-  if (onReady) onReady({ focusGraph, focusTrace })
+  if (onReady) onReady({ focusGraph, highlightGraph, focusTrace })
 
   root = render()
   return root

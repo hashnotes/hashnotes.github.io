@@ -83,7 +83,7 @@ type HtmlContent =
   | { value: string }
   | { href: string }
   | { attrs: Record<string, string> }
-  | { onclick?: (e: any) => void; onmousedown?: (e: any) => void; onmouseup?: (e: any) => void; onmousemove?: (e: any) => void; onwheel?: (e: any) => void; onkeydown?: (e: any) => void; onkeyup?: (e: any) => void };
+  | { onclick?: (e: any) => void; onmousedown?: (e: any) => void; onmouseup?: (e: any) => void; onmousemove?: (e: any) => void; onmouseout?: (e: any) => void; onwheel?: (e: any) => void; onkeydown?: (e: any) => void; onkeyup?: (e: any) => void };
 
 declare const HTML: {
   div: (...content: HtmlContent[]) => VDom;

@@ -1,14 +1,14 @@
 // page view
 
-type MouseEventType = "click"| "mousemove" | "mouseup" | "mousedown" | "drag" | "wheel"
+type MouseEventType = "click"| "mousemove" | "mouseup" | "mousedown" | "mouseout" | "drag" | "wheel"
 type KeyboardEventType = "keydown" | "keyup"
 type DomEventType = MouseEventType | KeyboardEventType;
 
-const mouseEvents : MouseEventType[] = ["click", "mousemove", "mouseup", "mousedown", "drag", "wheel"];
+const mouseEvents : MouseEventType[] = ["click", "mousemove", "mouseup", "mousedown", "mouseout", "drag", "wheel"];
 const keyboardEvents : KeyboardEventType[] = ["keydown", "keyup"];
 const svgNamespace = "http://www.w3.org/2000/svg";
 const svgTags = new Set(["svg", "path", "g", "line", "polyline", "polygon", "circle", "ellipse", "rect", "text"]);
-const allowedAttributeNames = new Set(["viewBox","width","height","xmlns","d","fill","stroke","stroke-width","stroke-linecap","stroke-linejoin","stroke-dasharray","stroke-dashoffset","x","y","x1","y1","x2","y2","cx","cy","r","rx","ry","points","transform","opacity","font-size","font-family","font-weight","text-anchor","dominant-baseline","dx","dy","href","target","rel"]);
+const allowedAttributeNames = new Set(["viewBox","width","height","xmlns","d","fill","stroke","stroke-width","stroke-linecap","stroke-linejoin","stroke-dasharray","stroke-dashoffset","x","y","x1","y1","x2","y2","cx","cy","r","rx","ry","points","transform","opacity","font-size","font-family","font-weight","text-anchor","dominant-baseline","dx","dy","href","target","rel","title"]);
 
 
 
@@ -52,6 +52,7 @@ export type VDom = {
   onmousedown?: MouseListener
   onmouseup?: MouseListener
   onmousemove?: MouseListener
+  onmouseout?: MouseListener
   onwheel?: MouseListener
   onkeydown?: KeyListener
   onkeyup?: KeyListener
@@ -89,9 +90,10 @@ export const renderDom = (mker: View, location: { pathname: string } = { pathnam
     mouseEvents.forEach((type) => el.addEventListener(type, (e) => {
       if (ctxRef && ctxRef.onUserEvent) ctxRef.onUserEvent(type)
       const me = e as globalThis.MouseEvent
+      const mappedTarget = doms.get(e.target as Element) || dom
       const event: MouseEvent = {
         type,
-        target: doms.get(e.target as HTMLElement)!,
+        target: mappedTarget,
         clientX: me.clientX,
         clientY: me.clientY,
         deltaY: type === "wheel" ? (me as globalThis.WheelEvent).deltaY : undefined,
@@ -102,13 +104,14 @@ export const renderDom = (mker: View, location: { pathname: string } = { pathnam
       else if (type === "mousedown" && dom.onmousedown) dom.onmousedown(event)
       else if (type === "mouseup" && dom.onmouseup) dom.onmouseup(event)
       else if (type === "mousemove" && dom.onmousemove) dom.onmousemove(event)
+      else if (type === "mouseout" && dom.onmouseout) dom.onmouseout(event)
       else if (type === "wheel" && dom.onwheel) dom.onwheel(event)
     }));
     keyboardEvents.forEach((type) => el.addEventListener(type, (e) =>{
       if (ctxRef && ctxRef.onUserEvent) ctxRef.onUserEvent(type)
       let {key, metaKey, shiftKey} = e as globalThis.KeyboardEvent;
       if (["INPUT" , "TEXTAREA"].includes((e.target as HTMLElement).tagName)) dom.value = (e.target as HTMLInputElement).value
-      const event: KeyboardEvent = { type, key, metaKey, shiftKey, target: doms.get(e.target as HTMLElement)!}
+      const event: KeyboardEvent = { type, key, metaKey, shiftKey, target: doms.get(e.target as Element) || dom}
       if (type === "keydown" && dom.onkeydown) dom.onkeydown(event)
       else if (type === "keyup" && dom.onkeyup) dom.onkeyup(event)
     }))
@@ -149,6 +152,7 @@ type Subscriber = {
   "onmouseup"? : MouseListener
   "onmousedown"? : MouseListener
   "onmousemove"? : MouseListener
+  "onmouseout"? : MouseListener
   "onclick"? :MouseListener
   "onwheel"? : MouseListener
 };
@@ -173,6 +177,7 @@ const mkDom = (tag: string) => (...content:Content[]) =>{
       if ("onmousedown" in c) dm.onmousedown = (c as Subscriber).onmousedown
       if ("onmouseup" in c) dm.onmouseup = (c as Subscriber).onmouseup
       if ("onmousemove" in c) dm.onmousemove = (c as Subscriber).onmousemove
+      if ("onmouseout" in c) dm.onmouseout = (c as Subscriber).onmouseout
       if ("onwheel" in c) dm.onwheel = (c as Subscriber).onwheel
       if ("onkeydown" in c) dm.onkeydown = (c as Subscriber).onkeydown
       if ("onkeyup" in c) dm.onkeyup = (c as Subscriber).onkeyup

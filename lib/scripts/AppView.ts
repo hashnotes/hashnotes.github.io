@@ -1,5 +1,5 @@
-// ts-note: notes/#072daff5d639d4b6af3b92250c626fe9.ts
-// js-note: notes/#e884f464a3907407d46f5ba805e0c224.js
+// ts-note: notes/#09dec346250f37aefd7114b257bbf347.ts
+// js-note: notes/#5ee321e2b621ea5c427f5be0dbc89209.js
 
 import { graphView } from "./graphView.ts";
 import type { GraphViewApi } from "./graphView.ts";
@@ -12,37 +12,58 @@ export const view: View = (ctx) => {
   const graphAreaW = Math.max(420, ctx.width - previewPaneW - 64)
   const graphAreaH = Math.max(280, Math.floor(ctx.height * 0.66))
 
-  let { input, logic, llmCall, loop } = mkGraph();
+  let { input, logic, llmCall, loop, ifElse, functionCall, constNode } = mkGraph();
   let inp = input("animals list");
 
 
   let gptoss120 = (prompt:Graph, schema:JsonSchema = {type:"any"}) => llmCall(prompt,"openai/gpt-oss-120b",schema )
 
+
+  let appendAnimal = logic(
+    {ls: input("animals"), newanimal: input("newanimal")},
+    "return animals.concat([newanimal.animal])",
+    "append animal to list"
+  )
+
+  let createAnimal = gptoss120(
+    logic(
+      { data: inp },
+      "return 'Given this JSON array of animal names: ' + JSON.stringify(data) + '. Return JSON object: {\"animal\": \"<name>\"}. The name must be a real animal and must NOT already be present in the input list.'",
+      "build LLM prompt"
+    ),{
+      type: "object",
+      properties: {
+        animal: { type: "string" }
+      },
+      required: ["animal"],
+      additionalProperties: false,
+    },
+  )
+
+
   let graph = loop(
     logic({}, "return ['cat', 'dog']", "seed list"),
     logic({ x: inp }, "return x.length < 6", "continue until size 6"),
-    logic({
-        ls: inp,
-        newanimal: gptoss120(
-          logic(
-            { data: inp },
-            "return 'Given this JSON array of animal names: ' + JSON.stringify(data) + '. Return JSON object: {\"animal\": \"<name>\"}. The name must be a real animal and must NOT already be present in the input list.'",
-            "build LLM prompt"
-          ),{
-            type: "object",
-            properties: {
-              animal: { type: "string" }
-            },
-            required: ["animal"],
-            additionalProperties: false,
-          },
-        )
-      },
-      "return ls.concat([newanimal.animal])",
-      "append new animal"
+    functionCall(
+      appendAnimal,
+      {
+        animals: inp,
+        newanimal: createAnimal
+      }
     ),
     "grow animal list"
   )
+
+  // graph = ifElse(
+  //   logic(
+  //     {ls:graph},
+  //     "return ls.length > 5",
+  //     "check if list is long enough"
+  //   ),
+  //   constNode("ok.", "ok."),
+  //   constNode("not ok."),
+  //   "check"
+  // )
 
 
   
@@ -52,6 +73,12 @@ export const view: View = (ctx) => {
   let graphApi: GraphViewApi | null = null
   let updatePreview: () => void = () => {}
   const fallbackGraphTitle = graph.title ? graph.title : "graph"
+  const restoreGraphHighlight = () => {
+    if (!graphApi) return
+    if (selectedTrace) graphApi.highlightGraph(selectedTrace.graph)
+    else if (selected) graphApi.highlightGraph(selected)
+    else graphApi.highlightGraph(null)
+  }
 
   const previewFor = (node: Graph): string =>
     node.$ === "input" ? [
@@ -71,10 +98,20 @@ export const view: View = (ctx) => {
         "code:",
         node.code,
       ].join("\n")
+      : node.$ === "IfElse" ? [
+        "type: IfElse",
+        ...(node.title ? ["title: " + node.title] : []),
+        "fields: condition, then, else",
+      ].join("\n")
       : node.$ === "LLMCall" ? [
         "type: LLMCall",
         ...(node.title ? ["title: " + node.title] : []),
         "model: " + node.model,
+      ].join("\n")
+      : node.$ === "FunctionCall" ? [
+        "type: FunctionCall",
+        ...(node.title ? ["title: " + node.title] : []),
+        "inputs: fn, " + Object.keys(node.inputs).join(", "),
       ].join("\n")
         : [
           "type: loop",
@@ -94,6 +131,47 @@ export const view: View = (ctx) => {
         const k = Object.keys(graph.inputs)[i]
         return { label: k ? k : "input " + (i + 1), node: step }
       })
+    }
+    if (graph.$ === "IfElse") {
+      return inputs.map((step, i) => ({ label: i === 0 ? "condition" : "branch", node: step }))
+    }
+    if (graph.$ === "FunctionCall") {
+      const keys = Object.keys(graph.inputs)
+      return inputs.map((step, i) => {
+        if (i === 0) return { label: "fn", node: step }
+        const k = keys[i - 1]
+        return { label: k ? k : "arg " + i, node: step }
+      })
+    }
+    return []
+  }
+
+  const graphInputEntries = (g: Graph): { label: string, node: Graph }[] => {
+    if (g.$ === "logic") {
+      return Object.entries(g.inputs).map(([label, node]) => ({ label, node }))
+    }
+    if (g.$ === "LLMCall") {
+      return [{ label: "prompt", node: g.prompt }]
+    }
+    if (g.$ === "loop") {
+      return [
+        { label: "input", node: g.input },
+        { label: "condition", node: g.condition },
+        { label: "body", node: g.body },
+      ]
+    }
+    if (g.$ === "IfElse") {
+      return [
+        { label: "condition", node: g.condition },
+        { label: "then", node: g.then },
+        { label: "else", node: g.else },
+      ]
+    }
+    if (g.$ === "FunctionCall") {
+      return [
+        { label: "fn", node: g.function },
+        ...Object.entries(g.inputs).map(([label, node]) => ({ label, node })),
+      ]
     }
     return []
   }
@@ -139,6 +217,9 @@ export const view: View = (ctx) => {
           selectedTrace.graph.$ === "loop"
             ? HTML.p({ style: { margin: "0" } }, "iterations: " + Math.max(0, selectedTrace.inputs.length - 1))
             : HTML.div(),
+          selectedTrace.graph.$ === "IfElse"
+            ? HTML.p({ style: { margin: "0" } }, "branch: " + (selectedTrace.inputs[0] && selectedTrace.inputs[0].value ? "then" : "else"))
+            : HTML.div(),
           inputs.length > 0
             ? HTML.div(
                 HTML.p({ style: { margin: "0.5em 0 0 0" } }, "inputs:"),
@@ -155,6 +236,13 @@ export const view: View = (ctx) => {
                           textDecoration: "underline",
                           cursor: "pointer",
                           fontWeight: "600",
+                        },
+                        attrs: { title: "Hover: highlight graph node. Click: jump to trace node." },
+                        onmousemove: () => {
+                          if (graphApi) graphApi.highlightGraph(entry.node.graph)
+                        },
+                        onmouseout: () => {
+                          restoreGraphHighlight()
                         },
                         onclick: (e:any) => {
                           if (e.preventDefault) e.preventDefault()
@@ -177,9 +265,20 @@ export const view: View = (ctx) => {
         ),
       )
     }
+    const node = selected ? selected : graph
+    const links = graphInputEntries(node)
+    const jumpGraph = (target: Graph) => {
+      selected = target
+      selectedTrace = null
+      if (graphApi) graphApi.focusGraph(target)
+      updatePreview()
+    }
     return HTML.div(
-      HTML.p({ style: { margin: "0 0 0.5em 0" } }, "node: " + (selected ? selected.$ : "")),
-      HTML.pre(
+      HTML.p(
+        { style: { margin: "0 0 0.5em 0", fontWeight: "700" } },
+        (node.$ + ": " + (node.title ? node.title : fallbackGraphTitle))
+      ),
+      HTML.div(
         {
           style: {
             margin: "0",
@@ -192,7 +291,42 @@ export const view: View = (ctx) => {
             padding: "0.75em",
           }
         },
-        previewFor(selected ? selected : graph)
+        HTML.pre({ style: { margin: "0" } }, previewFor(node)),
+        links.length > 0
+          ? HTML.div(
+              HTML.p({ style: { margin: "0.5em 0 0 0" } }, "inputs:"),
+              ...links.map((entry) => {
+                const targetTitle = entry.node.title ? entry.node.title : entry.node.$
+                return HTML.div(
+                  { style: { margin: "0 0 0.25em 0" } },
+                  HTML.span(entry.label + ": "),
+                  HTML.a(
+                    {
+                      href: "#",
+                      style: {
+                        color: "#0a66c2",
+                        textDecoration: "underline",
+                        cursor: "pointer",
+                        fontWeight: "600",
+                      },
+                      attrs: { title: "Hover: highlight graph node. Click: jump to graph node." },
+                      onmousemove: () => {
+                        if (graphApi) graphApi.highlightGraph(entry.node)
+                      },
+                      onmouseout: () => {
+                        restoreGraphHighlight()
+                      },
+                      onclick: (e:any) => {
+                        if (e.preventDefault) e.preventDefault()
+                        jumpGraph(entry.node)
+                      }
+                    },
+                    targetTitle
+                  ),
+                )
+              }),
+            )
+          : HTML.div(),
       ),
     )
   }

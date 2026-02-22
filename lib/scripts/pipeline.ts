@@ -1,5 +1,5 @@
-// ts-note: notes/#688e09fdc4bf3454ca381e3e149b517f.ts
-// js-note: notes/#82b18978dfc8c5d3ad006ae7cdc2cd58.js
+// ts-note: notes/#8611ca4df79f0c7db5eab19855a4fc8a.ts
+// js-note: notes/#de3b787012b990f105404a998c41f364.js
 
 import type { JsonSchema } from "./jsonSchema";
 import type { Jsonable } from "@hashnotes/core/notes";
@@ -19,6 +19,12 @@ export type Graph = {
   inputs: {[key: string]: Graph},
   code: string
 } | {
+  $: "IfElse",
+  title?: string,
+  condition: Graph,
+  then: Graph,
+  else: Graph,
+} | {
   $: "loop",
   title?: string,
   input: Graph,
@@ -30,6 +36,11 @@ export type Graph = {
   prompt: Graph,
   model: string,
   schema: JsonSchema
+} | {
+  $: "FunctionCall",
+  title?: string,
+  function: Graph,
+  inputs: {[key: string]: Graph},
 }
 
 export function mkGraph() {
@@ -46,11 +57,17 @@ export function mkGraph() {
     logic: (inputs: LogicInputs, code: string, title?: string): Graph => {
       return withTitle({ $: "logic", inputs, code }, title) as Graph
     },
+    ifElse: (condition: Graph, thenNode: Graph, elseNode: Graph, title?: string): Graph => {
+      return withTitle({ $: "IfElse", condition, then: thenNode, else: elseNode }, title) as Graph
+    },
     loop: (input: Graph, condition: Graph, body: Graph, title?: string): Graph => {
       return withTitle({ $: "loop", input, condition, body }, title) as Graph
     },
     llmCall: (prompt: Graph, model: string, schema: JsonSchema, title?: string): Graph => {
       return withTitle({ $: "LLMCall", prompt, model, schema }, title) as Graph
+    },
+    functionCall: (fn: Graph, inputs: LogicInputs, title?: string): Graph => {
+      return withTitle({ $: "FunctionCall", function: fn, inputs }, title) as Graph
     },
   }
 }

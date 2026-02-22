@@ -1,5 +1,5 @@
-// ts-note: notes/#0421a3f757329cb22798cd9d534b6791.ts
-// js-note: notes/#6c4be7cff029ca13114d095b6086b99e.js
+// ts-note: notes/#ff1e0613c1e25f842d4d86427e2beeff.ts
+// js-note: notes/#df233ee817cf36dc5fad9fca58efc0fb.js
 import type { Graph } from "./pipeline"
 import { openRouterLocal } from "./openRouterLocal"
 
@@ -44,6 +44,22 @@ export const runPipeline = async (graph: Graph, input: Jsonable): Promise<GraphT
     return deepFreeze(out)
   }
 
+  const evalFunctionCall = async (fnValue: Jsonable, inputs: {[key: string]: Jsonable}): Promise<Jsonable> => {
+    const frozenInputs = deepFreeze(inputs as unknown as Jsonable) as {[key: string]: Jsonable}
+    const callFn = async (fn: (...args: unknown[]) => unknown): Promise<Jsonable> => {
+      const out = fn(frozenInputs)
+      const resolved = out instanceof Promise ? await out : out
+      return deepFreeze(resolved as Jsonable)
+    }
+    if (typeof fnValue === "string" && fnValue.length > 1 && fnValue[0] === "#") {
+      return await callFn(getFuncSync(fnValue as Ref))
+    }
+    if (typeof fnValue === "function") {
+      return await callFn(fnValue as (...args: unknown[]) => unknown)
+    }
+    throw "FunctionCall function must resolve to ref or function"
+  }
+
   const evalGraph = async (g: Graph, i: Jsonable): Promise<Jsonable> => {
     if (g.$ === "input") return i
     if (g.$ === "const") return deepFreeze(g.value)
@@ -53,6 +69,10 @@ export const runPipeline = async (graph: Graph, input: Jsonable): Promise<GraphT
       const map = Object.fromEntries(keys.map((k, idx) => [k, vals[idx]])) as {[key: string]: Jsonable}
       return evalLogic(map, g.code)
     }
+    if (g.$ === "IfElse") {
+      const cond = await evalGraph(g.condition, i)
+      return await evalGraph(cond ? g.then : g.else, i)
+    }
     if (g.$ === "LLMCall") {
       const promptValue = await evalGraph(g.prompt, i)
       return await openRouterLocal({
@@ -60,6 +80,13 @@ export const runPipeline = async (graph: Graph, input: Jsonable): Promise<GraphT
         prompt: toPrompt(promptValue),
         schema: g.schema,
       })
+    }
+    if (g.$ === "FunctionCall") {
+      const fnValue = await evalGraph(g.function, i)
+      const keys = Object.keys(g.inputs)
+      const vals = await Promise.all(keys.map((k) => evalGraph(g.inputs[k], i)))
+      const map = Object.fromEntries(keys.map((k, idx) => [k, vals[idx]])) as {[key: string]: Jsonable}
+      return await evalFunctionCall(fnValue, map)
     }
     let cur = await evalGraph(g.input, i)
     while (await evalGraph(g.condition, cur)) {
@@ -77,6 +104,12 @@ export const runPipeline = async (graph: Graph, input: Jsonable): Promise<GraphT
       const map = Object.fromEntries(Object.keys(g.inputs).map((k, idx) => [k, values[idx]])) as {[key: string]: Jsonable}
       return { graph: g, inputs, value: evalLogic(map, g.code) }
     }
+    if (g.$ === "IfElse") {
+      const condTrace = await go(g.condition, i)
+      const takeThen = !!condTrace.value
+      const branchTrace = await go(takeThen ? g.then : g.else, i)
+      return { graph: g, inputs: [condTrace, branchTrace], value: branchTrace.value }
+    }
     if (g.$ === "LLMCall") {
       const promptTrace = await go(g.prompt, i)
       const llmValue = await openRouterLocal({
@@ -85,6 +118,14 @@ export const runPipeline = async (graph: Graph, input: Jsonable): Promise<GraphT
         schema: g.schema,
       })
       return { graph: g, inputs: [promptTrace], value: llmValue }
+    }
+    if (g.$ === "FunctionCall") {
+      const fnTrace = await go(g.function, i)
+      const inputKeys = Object.keys(g.inputs)
+      const inputTraces = await Promise.all(inputKeys.map((k) => go(g.inputs[k], i)))
+      const inputValues = Object.fromEntries(inputKeys.map((k, idx) => [k, inputTraces[idx].value])) as {[key: string]: Jsonable}
+      const callValue = await evalFunctionCall(fnTrace.value, inputValues)
+      return { graph: g, inputs: [fnTrace, ...inputTraces], value: callValue }
     }
     const steps: GraphTrace[] = [await go(g.input, i)]
     while (await evalGraph(g.condition, steps[steps.length - 1].value)) {
