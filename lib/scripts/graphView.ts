@@ -1,5 +1,5 @@
-// ts-note: notes/#aef17143e395caec15c413dad11d7995.ts
-// js-note: notes/#c8a836abd92e6d530c79dca5a973aa60.js
+// ts-note: notes/#236177710e84233b150189636b906560.ts
+// js-note: notes/#c22d76a1c8667d196b1eb4ba80f12a24.js
 
 import { runPipeline } from "./runPipeline"
 import type { GraphTrace } from "./runPipeline"
@@ -190,19 +190,7 @@ export const graphView = (
     })) as Ref
     const nodeName = trace.graph.title ? trace.graph.title : trace.graph.$
     if (trace.graph.$ === "input" && loopPrevSource) {
-      const node: DAG = {
-        title: nodeName + " <= prev",
-        srcs: [loopPrevSource],
-      }
-      traceDagByKey.set(traceKey, node)
-      node.onclick = () => {
-        if (sourceGraphCtl) {
-          const srcNode = memoByHash.get(safeHash(trace.graph as unknown as Jsonable))
-          sourceGraphCtl.highlight(srcNode ? srcNode : null)
-        }
-        if (onTraceNodeClick) onTraceNodeClick(trace)
-      }
-      return node
+      return loopPrevSource
     }
     if (trace.graph.$ === "loop") {
       const iters = Math.max(0, trace.inputs.length - 1)
@@ -222,37 +210,51 @@ export const graphView = (
         else expandedLoopKeys.add(loopKey)
         refreshView()
       }
-      const iterNodes: DAG[] = []
-      let prev: DAG | null = null
-      trace.inputs.forEach((step, i) => {
+      const seedTrace = trace.inputs.length > 0 ? trace.inputs[0] : { graph: { $: "input" } as Graph, inputs: [], value: trace.value }
+      const seedValueNode = traceDag(seedTrace)
+      const loopStart: DAG = {
+        title: (trace.graph.title ? trace.graph.title : "loop") + ":start => " + short(seedTrace.value),
+        srcs: [seedValueNode],
+      }
+      loopStart.onclick = () => clickTrace(seedTrace)
+      let stateNode: DAG = loopStart
+      for (let i = 1; i < trace.inputs.length; i++) {
+        const step = trace.inputs[i]
         const stepKey = (step.ref ? step.ref : safeHash({
           graph: step.graph as unknown as Jsonable,
           value: step.value,
           count: step.inputs.length,
         })) as Ref
         const stepExpanded = expandedIterKeys.has(stepKey)
-        const stepDetail = traceDag(step, prev)
-        const stepNode: DAG = {
-          title: (i === 0 ? "start" : "iter " + i) + (stepExpanded ? " [-] " : " [+] ") + "=> " + short(step.value),
-          srcs: prev ? [prev] : []
+        const condNode: DAG = {
+          title: "iter " + i + ":cond => true",
+          srcs: [stateNode],
         }
-        if (stepExpanded) {
-          stepNode.srcs = prev ? [prev, stepDetail] : [stepDetail]
+        condNode.onclick = () => {
+          selectedSourceKey = sourceKeyOf(trace.graph.condition)
+          if (sourceGraphCtl) {
+            const srcNode = memoByHash.get(selectedSourceKey)
+            sourceGraphCtl.highlight(srcNode ? srcNode : null)
+          }
+          if (onTraceNodeClick) onTraceNodeClick(trace)
         }
-        // For loop iterations, keep selection/focus on the outer step node.
-        traceDagByKey.set(stepKey, stepNode)
-        stepNode.onclick = () => {
+        const bodyTraceNode = traceDag(step, stateNode)
+        const nextState: DAG = {
+          title: "iter " + i + ":end " + (stepExpanded ? "[-] " : "[+] ") + "=> " + short(step.value),
+          srcs: stepExpanded ? [stateNode, condNode, bodyTraceNode] : [stateNode],
+        }
+        traceDagByKey.set(stepKey, nextState)
+        nextState.onclick = () => {
           clickTrace(step)
           if (expandedIterKeys.has(stepKey)) expandedIterKeys.delete(stepKey)
           else expandedIterKeys.add(stepKey)
           refreshView()
         }
-        iterNodes.push(stepNode)
-        prev = stepNode
-      })
+        stateNode = nextState
+      }
       const node: DAG = {
-        title: nodeName + " (" + iters + ") " + (expanded ? "[-]" : "[+]") + " => " + short(trace.value),
-        srcs: expanded && iterNodes.length > 0 ? [iterNodes[iterNodes.length - 1]] : [],
+        title: nodeName + ":end (" + iters + ") " + (expanded ? "[-]" : "[+]") + " => " + short(trace.value),
+        srcs: expanded ? [loopStart, stateNode] : [stateNode],
       }
       traceDagByKey.set(traceKey, node)
       node.onclick = () => {
@@ -286,13 +288,45 @@ export const graphView = (
     }
     memo.set(g, node)
     memoByHash.set(safeHash(g as unknown as Jsonable), node)
-    node.srcs = (g.$ == "input" ? []
-      : g.$ == "const" ? []
-      : g.$ == "logic" ? Object.values(g.inputs)
-      : g.$ == "IfElse" ? [g.condition, g.then, g.else]
-      : g.$ == "LLMCall" ? [g.prompt]
-      : g.$ == "FunctionCall" ? [g.function, ...Object.values(g.inputs)]
-      : [g.input, g.body, g.condition]).map(todag)
+    if (g.$ == "input" || g.$ == "const") {
+      node.srcs = []
+    } else if (g.$ == "logic") {
+      node.srcs = Object.values(g.inputs).map(todag)
+    } else if (g.$ == "IfElse") {
+      node.srcs = [g.condition, g.then, g.else].map(todag)
+    } else if (g.$ == "LLMCall") {
+      node.srcs = [g.prompt].map(todag)
+    } else if (g.$ == "FunctionCall") {
+      node.srcs = [g.function, ...Object.values(g.inputs)].map(todag)
+    } else {
+      const inputNode = todag(g.input)
+      const loopStart: DAG = { title: (g.title ? g.title : "loop") + ":start", srcs: [inputNode] }
+      const scopedMemo = new Map<Graph, DAG>()
+      const inLoop = (sub: Graph): DAG => {
+        if (sub.$ == "input") return loopStart
+        if (scopedMemo.has(sub)) return scopedMemo.get(sub) as DAG
+        const d: DAG = { title: sub.title ? sub.title : sub.$, srcs: [] }
+        if (onNodeClick) d.onclick = () => onNodeClick(sub)
+        scopedMemo.set(sub, d)
+        memoByHash.set(safeHash(sub as unknown as Jsonable), d)
+        if (sub.$ == "const") d.srcs = []
+        else if (sub.$ == "logic") d.srcs = Object.values(sub.inputs).map(inLoop)
+        else if (sub.$ == "IfElse") d.srcs = [sub.condition, sub.then, sub.else].map(inLoop)
+        else if (sub.$ == "LLMCall") d.srcs = [inLoop(sub.prompt)]
+        else if (sub.$ == "FunctionCall") d.srcs = [inLoop(sub.function), ...Object.values(sub.inputs).map(inLoop)]
+        else {
+          // Nested loop inside body/condition: render normally rather than rebinding its state.
+          const nested = todag(sub)
+          d.srcs = nested.srcs
+          d.title = nested.title
+        }
+        return d
+      }
+      const condNode = inLoop(g.condition)
+      const bodyNode = inLoop(g.body)
+      node.title = (g.title ? g.title : "loop") + ":end"
+      node.srcs = [loopStart, condNode, bodyNode]
+    }
     return node
   }
 

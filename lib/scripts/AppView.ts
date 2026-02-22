@@ -1,5 +1,5 @@
-// ts-note: notes/#09dec346250f37aefd7114b257bbf347.ts
-// js-note: notes/#5ee321e2b621ea5c427f5be0dbc89209.js
+// ts-note: notes/#ccf66d28a72bbf5f037e7cb61f56312e.ts
+// js-note: notes/#73cd949d667a64411c28360bc9428aae.js
 
 import { graphView } from "./graphView.ts";
 import type { GraphViewApi } from "./graphView.ts";
@@ -15,15 +15,7 @@ export const view: View = (ctx) => {
   let { input, logic, llmCall, loop, ifElse, functionCall, constNode } = mkGraph();
   let inp = input("animals list");
 
-
   let gptoss120 = (prompt:Graph, schema:JsonSchema = {type:"any"}) => llmCall(prompt,"openai/gpt-oss-120b",schema )
-
-
-  let appendAnimal = logic(
-    {ls: input("animals"), newanimal: input("newanimal")},
-    "return animals.concat([newanimal.animal])",
-    "append animal to list"
-  )
 
   let createAnimal = gptoss120(
     logic(
@@ -32,41 +24,24 @@ export const view: View = (ctx) => {
       "build LLM prompt"
     ),{
       type: "object",
-      properties: {
-        animal: { type: "string" }
-      },
+      properties: { animal: { type: "string" } },
       required: ["animal"],
       additionalProperties: false,
     },
   )
 
+  let appendAnimal = logic(
+    {animals: inp, newanimal: createAnimal},
+    "return animals.concat([newanimal.animal])",
+    "append animal to list"
+  )
 
   let graph = loop(
     logic({}, "return ['cat', 'dog']", "seed list"),
     logic({ x: inp }, "return x.length < 6", "continue until size 6"),
-    functionCall(
-      appendAnimal,
-      {
-        animals: inp,
-        newanimal: createAnimal
-      }
-    ),
+    appendAnimal,
     "grow animal list"
   )
-
-  // graph = ifElse(
-  //   logic(
-  //     {ls:graph},
-  //     "return ls.length > 5",
-  //     "check if list is long enough"
-  //   ),
-  //   constNode("ok.", "ok."),
-  //   constNode("not ok."),
-  //   "check"
-  // )
-
-
-  
 
   let selected: Graph | null = null
   let selectedTrace: GraphTrace | null = null
