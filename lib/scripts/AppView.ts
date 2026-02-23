@@ -1,5 +1,5 @@
-// ts-note: notes/#95ba45e9a9f9b93f7298796c8b5dc474.ts
-// js-note: notes/#bd31837c9bbf9f423eff3182a7530fd3.js
+// ts-note: notes/#76b31bd4c3335d941eebe73d89663145.ts
+// js-note: notes/#ea55161b16bb01be81c93dbcf4591a83.js
 
 import { graphView } from "./graphView.ts";
 import type { GraphViewApi } from "./graphView.ts";
@@ -23,40 +23,73 @@ export const view: View = (ctx) => {
   const initialRoutePipelineRef = parsePipelineRefFromPath(ctx.location.pathname)
 
   let { input, logic, llmCall, loop, ifElse, functionCall, constNode } = mkGraph();
-  let inp = input("animals list");
 
   let gptoss120 = (prompt:Graph, schema:JsonSchema = {type:"any"}) => llmCall(prompt,"openai/gpt-oss-120b",schema )
 
-  let createAnimal = gptoss120(
+
+  let legalContext = constNode("To promote consumer protection, enhance customer trust and ensure a level playing field, it is necessary to lay down rules on who is eligible to access customers’ data. Such rules should ensure that all data users are authorised and supervised by competent authorities. This would ensure that data can be accessed only by regulated financial institutions or by firms subject to a dedicated authorisation as financial information service providers’ (‘FISPs’) which is subject to this Regulation. Eligibility rules on FISPs, are needed to safeguard financial stability, market integrity and consumer protection, as FISPs would provide financial products and services to customers in the Union and would access data held by financial institutions and the integrity of which is essential to preserve the financial institutions’ ability to continue providing financial services in a safe and sound manner. Such rules are also required to guarantee the proper supervision of FISPs by competent authorities in line with their mandate to safeguard financial stability and integrity in the Union, which would allow FISPs to provide throughout the Union the services for which they are authorised. ", "FIDA")
+
+
+  // let inp = input("animals list");
+
+  // let createAnimal = gptoss120(
+  //   logic(
+  //     { data: inp },
+  //     "return 'Given this JSON array of animal names: ' + JSON.stringify(data) + '. Return JSON object: {\"animal\": \"<name>\"}. The name must be a real animal and must NOT already be present in the input list.'",
+  //     "build LLM prompt"
+  //   ),{
+  //     type: "object",
+  //     properties: { animal: { type: "string" } },
+  //     required: ["animal"],
+  //     additionalProperties: false,
+  //   },
+  // )
+
+  // let appendAnimal = logic(
+  //   {animals: inp, newanimal: createAnimal},
+  //   "return animals.concat([newanimal.animal])",
+  //   "append animal to list"
+  // )
+
+  // let graph = loop(
+  //   logic({}, "return ['cat', 'dog']", "seed list"),
+  //   logic({ x: inp }, "return x.length < 6", "continue until size 6"),
+  //   appendAnimal,
+  //   "grow animal list"
+  // )
+
+
+  let inp = input("current state")
+
+  let extractRole = gptoss120(
     logic(
-      { data: inp },
-      "return 'Given this JSON array of animal names: ' + JSON.stringify(data) + '. Return JSON object: {\"animal\": \"<name>\"}. The name must be a real animal and must NOT already be present in the input list.'",
-      "build LLM prompt"
+      {context: legalContext, state: inp},
+      "return 'Please Extract an additional Legal Role as defined in the Given regulation context. Extrace Roles as 1 - 5 word short description only. in the format {\"Role\": \"<name>\"} only extract Roles that are not yet extracted. The following roles are already extracted: ' + JSON.stringify(state) + '\\nhere is the legal context:' + context "
     ),{
       type: "object",
-      properties: { animal: { type: "string" } },
-      required: ["animal"],
+      properties: { Role: { type: "string" } },
+      required: ["Role"],
       additionalProperties: false,
-    },
-  )
-
-  let appendAnimal = logic(
-    {animals: inp, newanimal: createAnimal},
-    "return animals.concat([newanimal.animal])",
-    "append animal to list"
+    }
   )
 
   let graph = loop(
-    logic({}, "return ['cat', 'dog']", "seed list"),
-    logic({ x: inp }, "return x.length < 6", "continue until size 6"),
-    appendAnimal,
-    "grow animal list"
+    constNode([], "empty state"),
+    logic({x:inp}, "return x.length < 3", "continue until size 3"),
+    logic(
+      {state:inp, newrole: extractRole},
+      "return state.concat(newrole)",
+      "append new Role to list"
+    ),
+    "extract FIDA roles"
   )
+
   let selectedPipelineRef: Ref | null = initialRoutePipelineRef
   let selectedTraceListRef: Ref | null = null
   let routeGraphLoaded = initialRoutePipelineRef == null
   let routeGraphLoadError = ""
   let routeGraphLoadRequested = false
+  let ensureCurrentPipelineQueued = false
   let appRoot: VDom | null = null
   let refreshApp: () => void = () => {}
 
@@ -253,7 +286,23 @@ export const view: View = (ctx) => {
                 HTML.p({ style: { margin: "0" } }, selectedTrace.graph.code),
               )
             : HTML.div(),
-          HTML.p({ style: { margin: "0.5em 0 0 0" } }, "value: " + val(selectedTrace.value)),
+          HTML.p({ style: { margin: "0.5em 0 0 0" } }, "value:"),
+          HTML.pre(
+            {
+              style: {
+                margin: "0",
+                whiteSpace: "pre",
+                maxHeight: "12em",
+                overflow: "auto",
+              }
+            },
+            (() => {
+              const v = selectedTrace.value
+              if (typeof v === "string") return v
+              try { return JSON.stringify(v, null, 2) }
+              catch (_e) { return val(v) }
+            })()
+          ),
         ),
       )
     }
@@ -526,10 +575,10 @@ export const view: View = (ctx) => {
     ctx.update(appRoot)
   }
 
-  if (pipelineStore.listPipelines().length === 0) {
+  if (!ensureCurrentPipelineQueued) {
+    ensureCurrentPipelineQueued = true
     Promise.resolve().then(async () => {
-      const ref = await pipelineStore.addPipeline(graph)
-      if (!selectedPipelineRef) selectedPipelineRef = ref
+      await pipelineStore.addPipeline(graph)
       refreshApp()
     })
   }
