@@ -1,5 +1,5 @@
-// ts-note: notes/#e68c5e5a15fa8b3ec8771c3cba863891.ts
-// js-note: notes/#b322a2490fc624e8704bda9fabef4db7.js
+// ts-note: notes/#51d171caaeb94801f5f608115746bde2.ts
+// js-note: notes/#7b7e2acdf4cb83017f79aa6488defd56.js
 
 import { runPipeline } from "./runPipeline"
 import type { GraphTrace } from "./runPipeline"
@@ -247,7 +247,7 @@ export const graphView = (
         const bodyTraceNode = traceDag(step, stateNode)
         const nextState: DAG = {
           title: "iter " + i + ":end " + (stepExpanded ? "[-] " : "[+] ") + "=> " + short(step.value),
-          srcs: stepExpanded ? [stateNode, condNode, bodyTraceNode] : [stateNode],
+          srcs: stepExpanded ? [condNode, bodyTraceNode] : [stateNode],
         }
         traceDagByKey.set(stepKey, nextState)
         nextState.onclick = () => {
@@ -258,9 +258,10 @@ export const graphView = (
         }
         stateNode = nextState
       }
+      const finalTraceSrc = stateNode === loopStart ? seedValueNode : stateNode
       const node: DAG = {
         title: nodeName + ":end (" + iters + ") " + (expanded ? "[-]" : "[+]") + " => " + short(trace.value),
-        srcs: expanded ? [loopStart, stateNode] : [stateNode],
+        srcs: [finalTraceSrc],
       }
       traceDagByKey.set(traceKey, node)
       node.onclick = () => {
@@ -331,7 +332,7 @@ export const graphView = (
       const condNode = inLoop(g.condition)
       const bodyNode = inLoop(g.body)
       node.title = (g.title ? g.title : "loop") + ":end"
-      node.srcs = [loopStart, condNode, bodyNode]
+      node.srcs = [condNode, bodyNode]
     }
     return node
   }

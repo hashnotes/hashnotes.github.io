@@ -1,5 +1,5 @@
-// ts-note: notes/#76b31bd4c3335d941eebe73d89663145.ts
-// js-note: notes/#ea55161b16bb01be81c93dbcf4591a83.js
+// ts-note: notes/#bb6d316410dd924a6b6ffb2fe0819347.ts
+// js-note: notes/#2470abb711c9e661b66470f0d76d24a8.js
 
 import { graphView } from "./graphView.ts";
 import type { GraphViewApi } from "./graphView.ts";
@@ -29,36 +29,6 @@ export const view: View = (ctx) => {
 
   let legalContext = constNode("To promote consumer protection, enhance customer trust and ensure a level playing field, it is necessary to lay down rules on who is eligible to access customers’ data. Such rules should ensure that all data users are authorised and supervised by competent authorities. This would ensure that data can be accessed only by regulated financial institutions or by firms subject to a dedicated authorisation as financial information service providers’ (‘FISPs’) which is subject to this Regulation. Eligibility rules on FISPs, are needed to safeguard financial stability, market integrity and consumer protection, as FISPs would provide financial products and services to customers in the Union and would access data held by financial institutions and the integrity of which is essential to preserve the financial institutions’ ability to continue providing financial services in a safe and sound manner. Such rules are also required to guarantee the proper supervision of FISPs by competent authorities in line with their mandate to safeguard financial stability and integrity in the Union, which would allow FISPs to provide throughout the Union the services for which they are authorised. ", "FIDA")
 
-
-  // let inp = input("animals list");
-
-  // let createAnimal = gptoss120(
-  //   logic(
-  //     { data: inp },
-  //     "return 'Given this JSON array of animal names: ' + JSON.stringify(data) + '. Return JSON object: {\"animal\": \"<name>\"}. The name must be a real animal and must NOT already be present in the input list.'",
-  //     "build LLM prompt"
-  //   ),{
-  //     type: "object",
-  //     properties: { animal: { type: "string" } },
-  //     required: ["animal"],
-  //     additionalProperties: false,
-  //   },
-  // )
-
-  // let appendAnimal = logic(
-  //   {animals: inp, newanimal: createAnimal},
-  //   "return animals.concat([newanimal.animal])",
-  //   "append animal to list"
-  // )
-
-  // let graph = loop(
-  //   logic({}, "return ['cat', 'dog']", "seed list"),
-  //   logic({ x: inp }, "return x.length < 6", "continue until size 6"),
-  //   appendAnimal,
-  //   "grow animal list"
-  // )
-
-
   let inp = input("current state")
 
   let extractRole = gptoss120(
@@ -81,7 +51,7 @@ export const view: View = (ctx) => {
       "return state.concat(newrole)",
       "append new Role to list"
     ),
-    "extract FIDA roles"
+    "extract FIDA roles 3"
   )
 
   let selectedPipelineRef: Ref | null = initialRoutePipelineRef
