@@ -1,5 +1,5 @@
-// ts-note: notes/#236177710e84233b150189636b906560.ts
-// js-note: notes/#c22d76a1c8667d196b1eb4ba80f12a24.js
+// ts-note: notes/#e68c5e5a15fa8b3ec8771c3cba863891.ts
+// js-note: notes/#b322a2490fc624e8704bda9fabef4db7.js
 
 import { runPipeline } from "./runPipeline"
 import type { GraphTrace } from "./runPipeline"
@@ -17,6 +17,9 @@ export type GraphViewApi = {
 export type GraphViewOptions = {
   onNodeClick?: (node: Graph) => void
   onTraceNodeClick?: (trace: GraphTrace) => void
+  onTraceSavedRef?: (ref: Ref) => void
+  emptyTraceView?: () => VDom
+  traceRef?: Ref | null
   runInput?: Jsonable
   onReady?: (api: GraphViewApi) => void
 }
@@ -30,6 +33,9 @@ export const graphView = (
 ): VDom => {
   const onNodeClick = options.onNodeClick
   const onTraceNodeClick = options.onTraceNodeClick
+  const onTraceSavedRef = options.onTraceSavedRef
+  const emptyTraceView = options.emptyTraceView
+  const traceRef = options.traceRef ? options.traceRef : null
   const runInput = options.runInput == null ? "seed" : options.runInput
   const onReady = options.onReady
   const paneW = Math.max(200, Math.floor((w - 16) / 2))
@@ -333,9 +339,29 @@ export const graphView = (
   let status = "idle"
   let lastRef: Ref | null = null
   let lastTrace: GraphTrace | null = null
+  let traceLoadRequested = false
 
   let root: VDom = HTML.div()
   const render = (): VDom => {
+    if (traceRef && (!lastRef || lastRef !== traceRef) && !traceLoadRequested) {
+      traceLoadRequested = true
+      status = "loading trace..."
+      Promise.resolve().then(async () => {
+        try {
+          const trace = await loadTraceByRef(traceRef)
+          lastTrace = trace
+          lastRef = traceRef
+          status = "loaded: " + traceRef
+        } catch (err) {
+          status = "error: " + err
+          Promise.resolve().then(() => {
+            throw err
+          })
+        }
+        root.children = render().children
+        ctx.update(root)
+      })
+    }
     const controls = HTML.div(
       { style: { display: "flex", gap: "0.5em", alignItems: "center", marginBottom: "0.5em" } },
       HTML.button(
@@ -350,6 +376,7 @@ export const graphView = (
               const trace = await loadTraceByRef(ref)
               lastTrace = trace
               lastRef = ref
+              if (onTraceSavedRef) onTraceSavedRef(ref)
               status = "saved: " + ref
             } catch (err) {
               status = "error: " + err
@@ -433,7 +460,7 @@ export const graphView = (
             },
           },
           HTML.h4({ style: { margin: "0 0 0.4em 0", opacity: "0.8" } }, "trace"),
-          HTML.p({ style: { margin: "0", opacity: "0.7" } }, "Run pipeline to generate trace."),
+          emptyTraceView ? emptyTraceView() : HTML.p({ style: { margin: "0", opacity: "0.7" } }, "Run pipeline to generate trace."),
         )
 
     return HTML.div(

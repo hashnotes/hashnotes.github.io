@@ -1,12 +1,13 @@
 // ../lib/src/views.ts
-var mouseEvents = ["click", "mousemove", "mouseup", "mousedown", "drag", "wheel"];
+var mouseEvents = ["click", "mousemove", "mouseup", "mousedown", "mouseout", "drag", "wheel"];
 var keyboardEvents = ["keydown", "keyup"];
 var svgNamespace = "http://www.w3.org/2000/svg";
 var svgTags = /* @__PURE__ */ new Set(["svg", "path", "g", "line", "polyline", "polygon", "circle", "ellipse", "rect", "text"]);
-var allowedAttributeNames = /* @__PURE__ */ new Set(["viewBox", "width", "height", "xmlns", "d", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "stroke-dasharray", "stroke-dashoffset", "x", "y", "x1", "y1", "x2", "y2", "cx", "cy", "r", "rx", "ry", "points", "transform", "opacity", "font-size", "font-family", "font-weight", "text-anchor", "dominant-baseline", "dx", "dy", "href", "target", "rel"]);
+var allowedAttributeNames = /* @__PURE__ */ new Set(["viewBox", "width", "height", "xmlns", "d", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "stroke-dasharray", "stroke-dashoffset", "x", "y", "x1", "y1", "x2", "y2", "cx", "cy", "r", "rx", "ry", "points", "transform", "opacity", "font-size", "font-family", "font-weight", "text-anchor", "dominant-baseline", "dx", "dy", "href", "target", "rel", "title"]);
 var doms = /* @__PURE__ */ new WeakMap();
 var elements = /* @__PURE__ */ new WeakMap();
 var renderDom = (mker, location = { pathname: "/" }, width = globalThis.innerWidth ?? 0, height = globalThis.innerHeight ?? 0) => {
+  let ctxRef = null;
   const render = (dom) => {
     const el2 = svgTags.has(dom.tag) ? document.createElementNS(svgNamespace, dom.tag) : document.createElement(dom.tag);
     el2.textContent = dom.textContent;
@@ -19,10 +20,12 @@ var renderDom = (mker, location = { pathname: "/" }, width = globalThis.innerWid
     });
     Object.entries(dom.style).forEach((st) => el2.style.setProperty(...st));
     mouseEvents.forEach((type) => el2.addEventListener(type, (e) => {
+      if (ctxRef && ctxRef.onUserEvent) ctxRef.onUserEvent(type);
       const me = e;
+      const mappedTarget = doms.get(e.target) || dom;
       const event = {
         type,
-        target: doms.get(e.target),
+        target: mappedTarget,
         clientX: me.clientX,
         clientY: me.clientY,
         deltaY: type === "wheel" ? me.deltaY : void 0,
@@ -33,18 +36,20 @@ var renderDom = (mker, location = { pathname: "/" }, width = globalThis.innerWid
       else if (type === "mousedown" && dom.onmousedown) dom.onmousedown(event);
       else if (type === "mouseup" && dom.onmouseup) dom.onmouseup(event);
       else if (type === "mousemove" && dom.onmousemove) dom.onmousemove(event);
+      else if (type === "mouseout" && dom.onmouseout) dom.onmouseout(event);
       else if (type === "wheel" && dom.onwheel) dom.onwheel(event);
     }));
     keyboardEvents.forEach((type) => el2.addEventListener(type, (e) => {
+      if (ctxRef && ctxRef.onUserEvent) ctxRef.onUserEvent(type);
       let { key, metaKey, shiftKey } = e;
       if (["INPUT", "TEXTAREA"].includes(e.target.tagName)) dom.value = e.target.value;
-      const event = { type, key, metaKey, shiftKey, target: doms.get(e.target) };
+      const event = { type, key, metaKey, shiftKey, target: doms.get(e.target) || dom };
       if (type === "keydown" && dom.onkeydown) dom.onkeydown(event);
       else if (type === "keyup" && dom.onkeyup) dom.onkeyup(event);
     }));
     return el2;
   };
-  return render(mker({
+  const ctx = {
     add: (parent, ...el2) => {
       elements.get(parent)?.append(...el2.map((e) => render(e)));
     },
@@ -62,7 +67,9 @@ var renderDom = (mker, location = { pathname: "/" }, width = globalThis.innerWid
     location,
     width,
     height
-  }));
+  };
+  ctxRef = ctx;
+  return render(mker(ctx));
 };
 var mkDom = (tag) => (...content) => {
   let dm = { tag, style: {}, attrs: {}, textContent: "", id: "", children: [] };
@@ -80,6 +87,7 @@ var mkDom = (tag) => (...content) => {
       if ("onmousedown" in c) dm.onmousedown = c.onmousedown;
       if ("onmouseup" in c) dm.onmouseup = c.onmouseup;
       if ("onmousemove" in c) dm.onmousemove = c.onmousemove;
+      if ("onmouseout" in c) dm.onmouseout = c.onmouseout;
       if ("onwheel" in c) dm.onwheel = c.onwheel;
       if ("onkeydown" in c) dm.onkeydown = c.onkeydown;
       if ("onkeyup" in c) dm.onkeyup = c.onkeyup;
@@ -129,6 +137,7 @@ var popup = (...cs) => {
 };
 var HTML = {
   div,
+  svg,
   span: mkDom("span"),
   p: mkDom("p"),
   h1: mkDom("h1"),
@@ -5994,6 +6003,9 @@ var validateScopes = (program, allowedGlobals = []) => {
       case "AwaitExpression":
         visitExpr(e.argument);
         return;
+      case "ChainExpression":
+        visitExpr(e.expression);
+        return;
       case "NewExpression":
         visitExpr(e.callee);
         e.arguments.forEach((a) => visitExpr(a));
@@ -6057,6 +6069,9 @@ var validateScopes = (program, allowedGlobals = []) => {
       case "ReturnStatement":
         if (s.argument) visitExpr(s.argument);
         return;
+      case "ThrowStatement":
+        if (s.argument) visitExpr(s.argument);
+        return;
       case "VariableDeclaration":
         s.declarations.forEach(visitVarDecl);
         return;
@@ -6084,6 +6099,26 @@ var validateScopes = (program, allowedGlobals = []) => {
         exit();
         return;
       }
+      case "SwitchStatement": {
+        visitExpr(s.discriminant);
+        enter();
+        s.cases.forEach((c) => {
+          if (c.test) visitExpr(c.test);
+          c.consequent.forEach(visitStmt);
+        });
+        exit();
+        return;
+      }
+      case "TryStatement":
+        visitStmt(s.block);
+        if (s.handler) {
+          enter();
+          if (s.handler.param) declarePattern(s.handler.param);
+          visitStmt(s.handler.body);
+          exit();
+        }
+        if (s.finalizer) visitStmt(s.finalizer);
+        return;
       case "BreakStatement":
       case "ContinueStatement":
         return;
@@ -6118,6 +6153,9 @@ var validateNoPrototype = (program) => {
         return;
       case "AwaitExpression":
         visitExpr(e.argument);
+        return;
+      case "ChainExpression":
+        visitExpr(e.expression);
         return;
       case "ArrayExpression":
         e.elements.forEach((el2) => el2 && visitExpr(el2));
@@ -6173,6 +6211,9 @@ var validateNoPrototype = (program) => {
       case "ReturnStatement":
         if (s.argument) visitExpr(s.argument);
         return;
+      case "ThrowStatement":
+        if (s.argument) visitExpr(s.argument);
+        return;
       case "VariableDeclaration":
         s.declarations.forEach((d) => d.init && visitExpr(d.init));
         return;
@@ -6193,6 +6234,18 @@ var validateNoPrototype = (program) => {
         else visitExpr(s.left);
         visitExpr(s.right);
         visitStmt(s.body);
+        return;
+      case "SwitchStatement":
+        visitExpr(s.discriminant);
+        s.cases.forEach((c) => {
+          if (c.test) visitExpr(c.test);
+          c.consequent.forEach(visitStmt);
+        });
+        return;
+      case "TryStatement":
+        visitStmt(s.block);
+        if (s.handler) visitStmt(s.handler.body);
+        if (s.finalizer) visitStmt(s.finalizer);
         return;
       case "BreakStatement":
       case "ContinueStatement":
@@ -6236,7 +6289,13 @@ var assertSafeIdent = (name) => {
     throw new Error(`forbidden identifier in codegen: ${name}`);
 };
 var renderLiteral = (node) => {
-  if (node.regex) throw new Error("regexp literals not supported");
+  if (node.regex) {
+    if (typeof node.raw === "string" && node.raw.startsWith("/")) return node.raw;
+    const pattern = String(node.regex.pattern ?? "");
+    const flags = String(node.regex.flags ?? "");
+    const escaped = pattern.replace(/\\/g, "\\\\").replace(/\//g, "\\/");
+    return `/${escaped}/${flags}`;
+  }
   if (node.bigint != null) throw new Error("bigint literals not supported");
   const v = node.value;
   if (v === null) return "null";
@@ -6248,6 +6307,8 @@ var renderExpr = (e) => {
     case "Identifier":
       assertSafeIdent(e.name);
       return e.name;
+    case "ChainExpression":
+      return renderExpr(e.expression);
     case "SpreadElement":
       return `...${renderExpr(e.argument)}`;
     case "Literal":
@@ -6261,10 +6322,10 @@ var renderExpr = (e) => {
     case "CallExpression": {
       const calleeStr = renderExpr(e.callee);
       const needsParens = e.callee.type === "ArrowFunctionExpression";
-      return `${needsParens ? "(" : ""}${calleeStr}${needsParens ? ")" : ""}(${e.arguments.map(renderExpr).join(", ")})`;
+      return `${needsParens ? "(" : ""}${calleeStr}${needsParens ? ")" : ""}${e.optional ? "?." : ""}(${e.arguments.map(renderExpr).join(", ")})`;
     }
     case "MemberExpression":
-      return e.computed ? `${renderExpr(e.object)}[__chk(${renderExpr(e.property)})]` : `${renderExpr(e.object)}.${renderExpr(e.property)}`;
+      return e.computed ? `${renderExpr(e.object)}${e.optional ? "?." : ""}[__chk(${renderExpr(e.property)})]` : `${renderExpr(e.object)}${e.optional ? "?." : "."}${renderExpr(e.property)}`;
     case "AssignmentExpression":
       return `${renderExpr(e.left)} ${e.operator} ${renderExpr(e.right)}`;
     case "UpdateExpression":
@@ -6328,6 +6389,8 @@ var renderStmt = (s, inFn = false) => {
     }
     case "ReturnStatement":
       return `${burn}return${s.argument ? ` ${renderExpr(s.argument)}` : ""};`;
+    case "ThrowStatement":
+      return `${burn}throw ${renderExpr(s.argument)};`;
     case "VariableDeclaration":
       if (s.kind === "var") throw new Error("var declarations not allowed");
       return `${burn}${s.kind} ${s.declarations.map(renderDecl).join(", ")};`;
@@ -6351,6 +6414,24 @@ var renderStmt = (s, inFn = false) => {
       if (s.await) throw new Error("for-await-of not supported");
       const left = s.left.type === "VariableDeclaration" ? `${s.left.kind} ${s.left.declarations.map(renderDecl).join(", ")}` : renderExpr(s.left);
       return `${burn}for (${left} of ${renderExpr(s.right)}) ${renderLoopBody(s.body)}`;
+    }
+    case "SwitchStatement": {
+      const cases = s.cases.map((c) => {
+        const head = c.test ? `case ${renderExpr(c.test)}:` : "default:";
+        const body = c.consequent.map((stmt) => renderStmt(stmt, inFn)).join("");
+        return `${head}${body}`;
+      }).join("");
+      return `${burn}switch (${renderExpr(s.discriminant)}) {${cases}}`;
+    }
+    case "TryStatement": {
+      const block = renderStmt(s.block, inFn);
+      const handler = s.handler ? (() => {
+        const param = s.handler.param ? renderPattern(s.handler.param) : "";
+        const body = renderStmt(s.handler.body, inFn);
+        return `catch${param ? ` (${param})` : ""} ${body}`;
+      })() : "";
+      const finalizer = s.finalizer ? ` finally ${renderStmt(s.finalizer, inFn)}` : "";
+      return `${burn}try ${block}${handler}${finalizer}`;
     }
     case "EmptyStatement":
       return "";
@@ -6442,6 +6523,9 @@ var validateNoReservedRuntimeNames = (program, reservedNames) => {
       case "AwaitExpression":
         visitExpr(e.argument);
         return;
+      case "ChainExpression":
+        visitExpr(e.expression);
+        return;
       case "NewExpression":
         visitExpr(e.callee);
         e.arguments.forEach((a) => visitExpr(a));
@@ -6501,6 +6585,9 @@ var validateNoReservedRuntimeNames = (program, reservedNames) => {
       case "ReturnStatement":
         if (s.argument) visitExpr(s.argument);
         return;
+      case "ThrowStatement":
+        visitExpr(s.argument);
+        return;
       case "VariableDeclaration":
         s.declarations.forEach(visitVarDecl);
         return;
@@ -6521,6 +6608,21 @@ var validateNoReservedRuntimeNames = (program, reservedNames) => {
         else visitExpr(s.left);
         visitExpr(s.right);
         visitStmt(s.body);
+        return;
+      case "SwitchStatement":
+        visitExpr(s.discriminant);
+        s.cases.forEach((c) => {
+          if (c.test) visitExpr(c.test);
+          c.consequent.forEach(visitStmt);
+        });
+        return;
+      case "TryStatement":
+        visitStmt(s.block);
+        if (s.handler) {
+          if (s.handler.param) visitPattern(s.handler.param);
+          visitStmt(s.handler.body);
+        }
+        if (s.finalizer) visitStmt(s.finalizer);
         return;
       case "BreakStatement":
       case "ContinueStatement":
@@ -6699,6 +6801,77 @@ var runWithFuelSharedAsync = async (src, fuelRef, env2 = {}, fuelRefName = "__fu
   }
 };
 
+// ../lib/src/openrouter.ts
+var OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+var clip = (s, max = 2e3) => s.length <= max ? s : s.slice(0, max) + "...<truncated>";
+var asErrorMessage = async (res) => {
+  const text2 = await res.text();
+  if (!text2) return `${res.status} ${res.statusText}`;
+  try {
+    const parsed = JSON.parse(text2);
+    const msg = parsed?.error?.message;
+    return msg ? `${res.status} ${msg}` : `${res.status} ${text2}`;
+  } catch {
+    return `${res.status} ${text2}`;
+  }
+};
+var openRouterRequest = async (req) => {
+  if (!req.apiKey) throw new Error("openRouterRequest: apiKey is required");
+  if (!req.model) req.model = "openai/gpt-oss-20b";
+  if (!req.prompt) throw new Error("openRouterRequest: prompt is required");
+  if (!req.schema) req.schema = { type: "string" };
+  if (typeof req.schema !== "object" || Array.isArray(req.schema)) {
+    throw new Error("openRouterRequest: schema must be an object");
+  }
+  const messages = [{ role: "user", content: req.prompt }];
+  const mkBody = () => ({
+    model: req.model,
+    messages,
+    reasoning: {
+      enabled: true,
+      exclude: true
+    },
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "structured_output",
+        strict: true,
+        schema: req.schema
+      }
+    }
+  });
+  const doFetch = () => fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${req.apiKey}`
+    },
+    body: JSON.stringify(mkBody())
+  });
+  const res = await doFetch();
+  if (!res.ok) throw new Error(`OpenRouter request failed: ${await asErrorMessage(res)}`);
+  const data2 = await res.json();
+  const content = data2.choices?.[0]?.message?.content;
+  if (typeof content !== "string") {
+    throw new Error(
+      "OpenRouter response missing choices[0].message.content\nmodel: " + req.model + "\nschema: " + clip(JSON.stringify(req.schema)) + "\nresponse: " + clip(JSON.stringify(data2))
+    );
+  }
+  if (content.trim().length === 0) {
+    throw new Error(
+      "OpenRouter response content was empty\nmodel: " + req.model + "\nschema: " + clip(JSON.stringify(req.schema)) + "\nresponse: " + clip(JSON.stringify(data2))
+    );
+  }
+  try {
+    return JSON.parse(content);
+  } catch (err) {
+    const parseMsg = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      "OpenRouter response content was not valid JSON\nmodel: " + req.model + "\nparse error: " + parseMsg + "\nschema: " + clip(JSON.stringify(req.schema)) + "\ncontent: " + clip(content) + "\nresponse: " + clip(JSON.stringify(data2))
+    );
+  }
+};
+
 // ../lib/src/runtime.ts
 var localStoreKey = (fnRef, key) => `${fnRef}|${hashData(key)}`;
 var makeStore = (noteRef, memStore, ls) => ({
@@ -6722,7 +6895,8 @@ var parseDeps = (src) => {
   return [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
 };
 var callViewClient = async (fn, _args, options = {}) => {
-  const fuelRef = { value: options.fuel ?? 1e5 };
+  const fuelBudget = options.fuel ?? 1e5;
+  const fuelRef = { value: fuelBudget };
   const noteCache2 = /* @__PURE__ */ new Map();
   const memStore = /* @__PURE__ */ new Map();
   const ls = (() => {
@@ -6732,6 +6906,14 @@ var callViewClient = async (fn, _args, options = {}) => {
       return void 0;
     }
   })();
+  const promptUser = (message, defaultValue = "") => {
+    try {
+      const p = globalThis.prompt;
+      if (typeof p === "function") return p(message, defaultValue);
+    } catch {
+    }
+    return null;
+  };
   const fnToHash = /* @__PURE__ */ new Map();
   const fnRef = await asRef(fn);
   const fnNote = await deRef(fnRef);
@@ -6780,11 +6962,16 @@ var callViewClient = async (fn, _args, options = {}) => {
     deref: deRef,
     hashData,
     fromjson,
+    promptUser,
+    openRouterRequest,
     HTML,
     JSON,
     console
   };
   return (upper) => {
+    upper.onUserEvent = () => {
+      fuelRef.value = fuelBudget;
+    };
     const result = runWithFuelShared(fnNote, fuelRef, { ...baseEnv, args: [upper] });
     if ("err" in result) throw new Error(result.err);
     return result.ok;
@@ -6806,6 +6993,23 @@ ${err.stack}` : "";
   }
   return String(err);
 };
+var reportDevError = async (source, err) => {
+  const message = errorText(err);
+  const stack = err instanceof Error ? err.stack || "" : "";
+  try {
+    await fetch(`${DEV_URL}/browser-error`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source,
+        message,
+        stack,
+        page: window.location.pathname
+      })
+    });
+  } catch {
+  }
+};
 var renderErrorPanel = (mount, title, err, context = {}) => {
   mount.innerHTML = "";
   const box = el("div");
@@ -6824,8 +7028,13 @@ var renderErrorPanel = (mount, title, err, context = {}) => {
   box.append(body);
   mount.append(box);
 };
-var parseRef = (pathname) => {
-  const seg = decodeURIComponent(pathname.replace(/^\/+/, "").split("/")[0]).trim();
+var parsePathSeg = (pathname, idx) => {
+  const segs = pathname.replace(/^\/+/, "").split("/");
+  if (idx < 0 || idx >= segs.length) return "";
+  return decodeURIComponent(segs[idx]).trim();
+};
+var parseRefAt = (pathname, idx) => {
+  const seg = parsePathSeg(pathname, idx);
   if (!seg) return null;
   if (isRef(seg)) return seg;
   if (/^[a-f0-9]{32}$/i.test(seg)) return `#${seg}`;
@@ -6839,6 +7048,7 @@ var startPolling = (mount, poll) => {
       await poll();
     } catch (err) {
       console.error("live poll failed", err);
+      void reportDevError("poll", err);
     }
   };
   run();
@@ -6853,10 +7063,31 @@ var renderRef = async (mount, ref2) => {
     mount.innerHTML = "";
     mount.append(renderDom(view, { pathname: window.location.pathname }));
   } catch (err) {
+    void reportDevError("renderRef", err);
     renderErrorPanel(mount, "Failed to render note view", err, {
       ref: ref2,
       path: window.location.pathname,
       note: tojson(note)
+    });
+  }
+};
+var renderRawRef = async (mount, ref2) => {
+  try {
+    const note = await getNote(ref2);
+    mount.innerHTML = "";
+    const wrap = el("div");
+    wrap.style.cssText = "padding:8px;";
+    const h = el("h3", `raw note ${ref2}`);
+    h.style.cssText = "margin:0 0 8px 0;font-size:1rem;";
+    const pre = el("pre", tojson(note));
+    pre.style.cssText = "margin:0;white-space:pre-wrap;overflow:auto;max-height:70vh;";
+    wrap.append(h, pre);
+    mount.append(wrap);
+  } catch (err) {
+    void reportDevError("renderRawRef", err);
+    renderErrorPanel(mount, "Failed to load raw note", err, {
+      ref: ref2,
+      path: window.location.pathname
     });
   }
 };
@@ -6877,7 +7108,7 @@ var bootLiveView = (mount, path2) => {
       const bar = el("div");
       bar.style.cssText = "padding:4px 8px;font-size:0.85em;opacity:0.6;";
       const a = document.createElement("a");
-      a.href = `/${view.jsHash.slice(1)}`;
+      a.href = `/view/${view.jsHash.slice(1)}`;
       a.textContent = `${view.filename ?? view.exportName} \u2192 ${view.jsHash.slice(0, 14)}\u2026`;
       bar.append(a);
       const rendered = renderDom(await callViewClient(view.jsHash), { pathname: path2.replace("/live/view", "") || "/" });
@@ -6886,6 +7117,7 @@ var bootLiveView = (mount, path2) => {
       lastErrorKey = "";
     } catch (err) {
       const key = errorText(err);
+      void reportDevError("bootLiveView", err);
       if (key !== lastErrorKey) {
         renderErrorPanel(mount, "Failed to render latest live view", err, {
           path: path2,
@@ -6911,9 +7143,14 @@ var bootLiveIndex = (mount) => {
       const isView = entry.exportName === "view" || entry.exportName === "default";
       if (isView) {
         const a = document.createElement("a");
-        a.href = `/${entry.jsHash.slice(1)}`;
+        a.href = `/view/${entry.jsHash.slice(1)}`;
         a.textContent = entry.exportName;
         row.append(a);
+        const raw = document.createElement("a");
+        raw.href = `/${entry.jsHash.slice(1)}`;
+        raw.textContent = " (raw)";
+        raw.style.cssText = "opacity:0.5;font-size:0.85em;";
+        row.append(raw);
         const live = document.createElement("a");
         live.href = "/live/view";
         live.textContent = " (live)";
@@ -6932,16 +7169,31 @@ var bootLiveIndex = (mount) => {
   });
 };
 var boot = async () => {
+  window.addEventListener("error", (ev) => {
+    void reportDevError("window.onerror", ev.error || ev.message);
+  });
+  window.addEventListener("unhandledrejection", (ev) => {
+    void reportDevError("window.unhandledrejection", ev.reason);
+  });
   const mount = document.getElementById("app") ?? document.body;
   const path2 = window.location.pathname.replace(/\/+$/, "");
   if (path2.startsWith("/live/view")) return bootLiveView(mount, path2);
   if (path2 === "/live") return bootLiveIndex(mount);
-  const ref2 = parseRef(path2);
-  if (!ref2) {
-    mount.textContent = "Open /<note-hash> to render that note as a view.";
+  if (path2.startsWith("/view/")) {
+    const ref3 = parseRefAt(path2, 1);
+    if (!ref3) {
+      mount.textContent = "Open /view/<note-hash> to render that note as a view.";
+      return;
+    }
+    await renderRef(mount, ref3);
     return;
   }
-  await renderRef(mount, ref2);
+  const ref2 = parseRefAt(path2, 0);
+  if (!ref2) {
+    mount.textContent = "Open /<note-hash> for raw data or /view/<note-hash> to render as a view.";
+    return;
+  }
+  await renderRawRef(mount, ref2);
 };
 
 // src/entry.ts
@@ -6950,4 +7202,4 @@ boot().catch((err) => {
   const mount = document.getElementById("app") ?? document.body;
   mount.textContent = `App boot failed: ${String(err)}`;
 });
-//# sourceMappingURL=index-ZDXSIOEF.js.map
+//# sourceMappingURL=index-2DGRRID4.js.map
