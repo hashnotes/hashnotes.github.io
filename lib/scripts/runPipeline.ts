@@ -1,5 +1,5 @@
-// ts-note: notes/#ff1e0613c1e25f842d4d86427e2beeff.ts
-// js-note: notes/#df233ee817cf36dc5fad9fca58efc0fb.js
+// ts-note: notes/#9b402c73e618c1e272ed1a4e04dbf94f.ts
+// js-note: notes/#5caa787d6c05a94af474fbcd272fb8b9.js
 import type { Graph } from "./pipeline"
 import { openRouterLocal } from "./openRouterLocal"
 
@@ -36,6 +36,15 @@ const toPrompt = (x: Jsonable): string => {
 }
 
 export const runPipeline = async (graph: Graph, input: Jsonable): Promise<GraphTrace> => {
+  const builtinCalls: { [k: string]: (inputs: { [key: string]: Jsonable }) => Jsonable } = {
+    mapParents: (inputs) => {
+      const items = inputs.items
+      if (!Array.isArray(items)) return items as Jsonable
+      // Placeholder implementation: keep structure stable until a dedicated parent-mapping fn is provided.
+      return items as Jsonable
+    },
+  }
+
   const evalLogic = (inputs: {[key: string]: Jsonable}, code: string): Jsonable => {
     if (code.indexOf("return") < 0) return null
     const keys = Object.keys(inputs)
@@ -50,6 +59,9 @@ export const runPipeline = async (graph: Graph, input: Jsonable): Promise<GraphT
       const out = fn(frozenInputs)
       const resolved = out instanceof Promise ? await out : out
       return deepFreeze(resolved as Jsonable)
+    }
+    if (typeof fnValue === "string" && !!builtinCalls[fnValue]) {
+      return await callFn(builtinCalls[fnValue] as (...args: unknown[]) => unknown)
     }
     if (typeof fnValue === "string" && fnValue.length > 1 && fnValue[0] === "#") {
       return await callFn(getFuncSync(fnValue as Ref))

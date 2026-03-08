@@ -1,5 +1,5 @@
-// ts-note: notes/#51d171caaeb94801f5f608115746bde2.ts
-// js-note: notes/#7b7e2acdf4cb83017f79aa6488defd56.js
+// ts-note: notes/#e32cf5469029da47836cdbbc6442991e.ts
+// js-note: notes/#09d425be2270b574af1c34d0477aa575.js
 
 import { runPipeline } from "./runPipeline"
 import type { GraphTrace } from "./runPipeline"
@@ -109,11 +109,12 @@ export const graphView = (
     next: { w: number, h: number } | null,
     current: { w: number, h: number } | null,
     set: (s: { w: number, h: number }) => void,
-  ) => {
-    if (!next) return
+  ): boolean => {
+    if (!next) return false
     const changed = !current || Math.abs(next.w - current.w) > 6 || Math.abs(next.h - current.h) > 6
-    if (!changed) return
+    if (!changed) return false
     set(next)
+    return true
   }
 
   const armResize = (e: any): boolean => {
@@ -288,13 +289,19 @@ export const graphView = (
   }
 
   let todag = (g:Graph):DAG =>{
+    const gKey = safeHash(g as unknown as Jsonable)
     if (memo.has(g)) return memo.get(g) as DAG
+    if (memoByHash.has(gKey)) {
+      const hit = memoByHash.get(gKey) as DAG
+      memo.set(g, hit)
+      return hit
+    }
     let node: DAG = { title: g.title ? g.title : g.$, srcs: [] }
     if (onNodeClick) {
       node.onclick = () => onNodeClick(g)
     }
     memo.set(g, node)
-    memoByHash.set(safeHash(g as unknown as Jsonable), node)
+    memoByHash.set(gKey, node)
     if (g.$ == "input" || g.$ == "const") {
       node.srcs = []
     } else if (g.$ == "logic") {
@@ -309,13 +316,21 @@ export const graphView = (
       const inputNode = todag(g.input)
       const loopStart: DAG = { title: (g.title ? g.title : "loop") + ":start", srcs: [inputNode] }
       const scopedMemo = new Map<Graph, DAG>()
+      const scopedMemoByHash = new Map<Ref, DAG>()
       const inLoop = (sub: Graph): DAG => {
         if (sub.$ == "input") return loopStart
         if (scopedMemo.has(sub)) return scopedMemo.get(sub) as DAG
+        const subKey = safeHash(sub as unknown as Jsonable)
+        if (scopedMemoByHash.has(subKey)) {
+          const hit = scopedMemoByHash.get(subKey) as DAG
+          scopedMemo.set(sub, hit)
+          return hit
+        }
         const d: DAG = { title: sub.title ? sub.title : sub.$, srcs: [] }
         if (onNodeClick) d.onclick = () => onNodeClick(sub)
         scopedMemo.set(sub, d)
-        memoByHash.set(safeHash(sub as unknown as Jsonable), d)
+        scopedMemoByHash.set(subKey, d)
+        memoByHash.set(subKey, d)
         if (sub.$ == "const") d.srcs = []
         else if (sub.$ == "logic") d.srcs = Object.values(sub.inputs).map(inLoop)
         else if (sub.$ == "IfElse") d.srcs = [sub.condition, sub.then, sub.else].map(inLoop)
@@ -405,7 +420,8 @@ export const graphView = (
           if (!sourceResizeArmed) return
           sourceResizeArmed = false
           const next = captureSize(e.currentTarget || null)
-          applyPaneResize(next, sourcePaneSize, (s) => { sourcePaneSize = s })
+          const changed = applyPaneResize(next, sourcePaneSize, (s) => { sourcePaneSize = s })
+          if (changed) refreshView()
         },
       },
       HTML.h4({ style: { margin: "0 0 0.4em 0" } }, "pipeline"),
@@ -428,7 +444,8 @@ export const graphView = (
               if (!traceResizeArmed) return
               traceResizeArmed = false
               const next = captureSize(e.currentTarget || null)
-              applyPaneResize(next, tracePaneSize, (s) => { tracePaneSize = s })
+              const changed = applyPaneResize(next, tracePaneSize, (s) => { tracePaneSize = s })
+              if (changed) refreshView()
             },
           },
           HTML.h4({ style: { margin: "0 0 0.4em 0" } }, "trace"),
@@ -457,7 +474,8 @@ export const graphView = (
               if (!traceResizeArmed) return
               traceResizeArmed = false
               const next = captureSize(e.currentTarget || null)
-              applyPaneResize(next, tracePaneSize, (s) => { tracePaneSize = s })
+              const changed = applyPaneResize(next, tracePaneSize, (s) => { tracePaneSize = s })
+              if (changed) refreshView()
             },
           },
           HTML.h4({ style: { margin: "0 0 0.4em 0", opacity: "0.8" } }, "trace"),

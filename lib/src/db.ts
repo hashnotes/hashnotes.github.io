@@ -51,6 +51,8 @@ export const setServer = (value: ServerName) => {
 };
 
 export let getServer = () => SERVER;
+
+setServer("local")
 console.log("connect to", SERVER)
 
 const call = async (name: string, payload: unknown): Promise<string> => {

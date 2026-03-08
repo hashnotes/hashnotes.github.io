@@ -1,10 +1,10 @@
-// ts-note: notes/#bb6d316410dd924a6b6ffb2fe0819347.ts
-// js-note: notes/#2470abb711c9e661b66470f0d76d24a8.js
+// ts-note: notes/#e9462d1305e44b16f4add38fead0ee21.ts
+// js-note: notes/#8cb3d064caabd19173a0959388fe672a.js
 
+import { mkExamplePipeline } from "./export_pipeline.ts";
 import { graphView } from "./graphView.ts";
 import type { GraphViewApi } from "./graphView.ts";
-import { JsonSchema } from "./jsonSchema.ts";
-import { mkGraph, type Graph } from "./pipeline.ts";
+import { type Graph } from "./pipeline.ts";
 import { makePipelineStore } from "./pipelineStorage.ts";
 import type { GraphTrace } from "./runPipeline.ts";
 
@@ -22,37 +22,7 @@ export const view: View = (ctx) => {
   }
   const initialRoutePipelineRef = parsePipelineRefFromPath(ctx.location.pathname)
 
-  let { input, logic, llmCall, loop, ifElse, functionCall, constNode } = mkGraph();
-
-  let gptoss120 = (prompt:Graph, schema:JsonSchema = {type:"any"}) => llmCall(prompt,"openai/gpt-oss-120b",schema )
-
-
-  let legalContext = constNode("To promote consumer protection, enhance customer trust and ensure a level playing field, it is necessary to lay down rules on who is eligible to access customers’ data. Such rules should ensure that all data users are authorised and supervised by competent authorities. This would ensure that data can be accessed only by regulated financial institutions or by firms subject to a dedicated authorisation as financial information service providers’ (‘FISPs’) which is subject to this Regulation. Eligibility rules on FISPs, are needed to safeguard financial stability, market integrity and consumer protection, as FISPs would provide financial products and services to customers in the Union and would access data held by financial institutions and the integrity of which is essential to preserve the financial institutions’ ability to continue providing financial services in a safe and sound manner. Such rules are also required to guarantee the proper supervision of FISPs by competent authorities in line with their mandate to safeguard financial stability and integrity in the Union, which would allow FISPs to provide throughout the Union the services for which they are authorised. ", "FIDA")
-
-  let inp = input("current state")
-
-  let extractRole = gptoss120(
-    logic(
-      {context: legalContext, state: inp},
-      "return 'Please Extract an additional Legal Role as defined in the Given regulation context. Extrace Roles as 1 - 5 word short description only. in the format {\"Role\": \"<name>\"} only extract Roles that are not yet extracted. The following roles are already extracted: ' + JSON.stringify(state) + '\\nhere is the legal context:' + context "
-    ),{
-      type: "object",
-      properties: { Role: { type: "string" } },
-      required: ["Role"],
-      additionalProperties: false,
-    }
-  )
-
-  let graph = loop(
-    constNode([], "empty state"),
-    logic({x:inp}, "return x.length < 3", "continue until size 3"),
-    logic(
-      {state:inp, newrole: extractRole},
-      "return state.concat(newrole)",
-      "append new Role to list"
-    ),
-    "extract FIDA roles 3"
-  )
+  let graph = mkExamplePipeline()
 
   let selectedPipelineRef: Ref | null = initialRoutePipelineRef
   let selectedTraceListRef: Ref | null = null
@@ -67,7 +37,83 @@ export const view: View = (ctx) => {
   let selectedTrace: GraphTrace | null = null
   let graphApi: GraphViewApi | null = null
   let updatePreview: () => void = () => {}
+  let commentNodeKey = ""
+  let commentDraft = ""
+  let commentStatus = ""
   const fallbackGraphTitle = graph.title ? graph.title : "graph"
+  const stripUndefined = (x: Jsonable): Jsonable => {
+    if (x == null) return x
+    if (typeof x !== "object") return x
+    if (Array.isArray(x)) return x.map(stripUndefined)
+    const out: { [k: string]: Jsonable } = {}
+    Object.entries(x).forEach(([k, v]) => {
+      if (typeof v === "undefined") return
+      out[k] = stripUndefined(v as Jsonable)
+    })
+    return out
+  }
+  const graphCommentNodeKey = (node: Graph): string =>
+    "graph:" + hashData(stripUndefined(node as unknown as Jsonable))
+  const traceCommentNodeKey = (node: GraphTrace): string => {
+    if (node.ref) return "trace:" + node.ref
+    return "trace:" + hashData(stripUndefined({
+      graph: node.graph as unknown as Jsonable,
+      value: node.value,
+      inputs: node.inputs.length,
+    } as unknown as Jsonable))
+  }
+  const syncCommentDraft = () => {
+    const nextKey = selectedTrace ? traceCommentNodeKey(selectedTrace) : selected ? graphCommentNodeKey(selected) : ""
+    if (nextKey === commentNodeKey) return
+    commentNodeKey = nextKey
+    commentDraft = nextKey ? pipelineStore.getComment(nextKey) : ""
+    commentStatus = ""
+  }
+  const commentEditor = (): VDom => {
+    if (!commentNodeKey) return HTML.div()
+    return HTML.div(
+      { style: { marginTop: "0.75em", borderTop: "1px solid var(--color)", paddingTop: "0.75em" } },
+      HTML.p({ style: { margin: "0 0 0.4em 0", fontWeight: "700" } }, "comment"),
+      HTML.textarea(
+        {
+          value: commentDraft,
+          style: {
+            width: "100%",
+            minHeight: "6em",
+            boxSizing: "border-box",
+            background: "var(--background)",
+            color: "var(--color)",
+            border: "1px solid var(--color)",
+            fontFamily: "monospace",
+            resize: "vertical",
+          },
+          attrs: { title: "Comment for this node" },
+          onkeyup: (e:any) => {
+            commentDraft = typeof e.target.value === "string" ? e.target.value : commentDraft
+            commentStatus = ""
+          },
+          onkeydown: (e:any) => {
+            commentDraft = typeof e.target.value === "string" ? e.target.value : commentDraft
+          },
+        }
+      ),
+      HTML.div(
+        { style: { marginTop: "0.5em", display: "flex", gap: "0.5em", alignItems: "center" } },
+        HTML.button(
+          {
+            onclick: () => {
+              if (!commentNodeKey) return
+              pipelineStore.setComment(commentNodeKey, commentDraft)
+              commentStatus = "saved"
+              updatePreview()
+            }
+          },
+          "Save comment"
+        ),
+        commentStatus ? HTML.span({ style: { opacity: "0.8" } }, commentStatus) : HTML.span()
+      ),
+    )
+  }
   const restoreGraphHighlight = () => {
     if (!graphApi) return
     if (selectedTrace) graphApi.highlightGraph(selectedTrace.graph)
@@ -172,6 +218,7 @@ export const view: View = (ctx) => {
   }
 
   const buildPreview = (): VDom => {
+    syncCommentDraft()
     if (!selected && !selectedTrace) {
       return HTML.div(
         HTML.p({ style: { opacity: "0.7", margin: "0" } }, "Click a node to preview its content."),
@@ -273,6 +320,7 @@ export const view: View = (ctx) => {
               catch (_e) { return val(v) }
             })()
           ),
+          commentEditor(),
         ),
       )
     }
@@ -336,8 +384,9 @@ export const view: View = (ctx) => {
                   ),
                 )
               }),
-            )
-          : HTML.div(),
+              )
+            : HTML.div(),
+        commentEditor(),
       ),
     )
   }
@@ -511,7 +560,11 @@ export const view: View = (ctx) => {
             onReady: (api) => {
               graphApi = api
             },
-            "runInput": "test"
+            "runInput": {
+              full: false,
+              maxRetriesIdentify: 0,
+              docs: [],
+            }
           }),
         ),
         HTML.div(

@@ -27,9 +27,12 @@ const asErrorMessage = async (res: Response): Promise<string> => {
   const text = await res.text();
   if (!text) return `${res.status} ${res.statusText}`;
   try {
-    const parsed = JSON.parse(text) as { error?: { message?: string } };
+    const parsed = JSON.parse(text) as { error?: { message?: string; code?: string } };
     const msg = parsed?.error?.message;
-    return msg ? `${res.status} ${msg}` : `${res.status} ${text}`;
+    const code = parsed?.error?.code;
+    const detail = parsed?.error ? clip(JSON.stringify(parsed.error)) : clip(text);
+    if (msg) return `${res.status} ${code ? code + ": " : ""}${msg}\nerror: ${detail}`;
+    return `${res.status} ${detail}`;
   } catch {
     return `${res.status} ${text}`;
   }
@@ -50,10 +53,6 @@ export const openRouterRequest = async (
   const mkBody = () => ({
     model: req.model,
     messages,
-    reasoning: {
-      enabled: true,
-      exclude: true,
-    },
     response_format: {
       type: "json_schema",
       json_schema: {

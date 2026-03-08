@@ -62,6 +62,9 @@ const getExportName = (src: string): string => {
   return "unknown";
 };
 
+const valueExportCount = (src: string): number =>
+  [...src.matchAll(/^\s*export\s+(?:default|const|function|async\s+function)\b/gm)].length;
+
 // --- current history for the server ---
 
 let currentHistory: HistoryEntry[] = [];
@@ -141,6 +144,11 @@ const compile = async () => {
     const raw = readFileSync(filePath, "utf-8");
     const clean = stripHeader(raw);
     const name = basename(file, ".ts");
+    const exportsN = valueExportCount(clean);
+    if (exportsN !== 1) {
+      console.warn(`  skip: ${name}.ts (expected exactly 1 value export, found ${exportsN})`);
+      continue;
+    }
     const tsHash = hashData(clean);
 
     sourcesByName.set(name, clean);

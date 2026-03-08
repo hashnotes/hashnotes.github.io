@@ -1,73 +1,67 @@
-// ts-note: notes/#8611ca4df79f0c7db5eab19855a4fc8a.ts
-// js-note: notes/#de3b787012b990f105404a998c41f364.js
-
-import type { JsonSchema } from "./jsonSchema";
+// ts-note: notes/#44a12422889185758b30c794d589f56e.ts
+// js-note: notes/#a6e59e9f5b3b035ace35c94e942938b3.js
+import type { JsonSchema } from "./jsonSchema.ts";
 import type { Jsonable } from "@hashnotes/core/notes";
 
-export type LogicInputs = {[key: string]: Graph}
+export type LogicInputs = { [key: string]: Graph };
 
-export type Graph = {
-  $: "input",
+export type Graph = ({
+  $: string,
   title?: string,
+  outputSchema: JsonSchema
+}) & ({
+  $: "input",
 } | {
   $: "const",
-  title?: string,
   value: Jsonable,
 } | {
-  $: "logic",
-  title?: string,
-  inputs: {[key: string]: Graph},
-  code: string
-} | {
-  $: "IfElse",
-  title?: string,
-  condition: Graph,
-  then: Graph,
-  else: Graph,
-} | {
   $: "loop",
-  title?: string,
   input: Graph,
   condition: Graph,
   body: Graph,
 } | {
+  $: "logic",
+  inputs: { [key: string]: Graph },
+  code: string
+} | {
   $: "LLMCall",
-  title?: string,
   prompt: Graph,
   model: string,
   schema: JsonSchema
 } | {
+  $: "IfElse",
+  condition: Graph,
+  then: Graph,
+  else: Graph,
+} | {
   $: "FunctionCall",
-  title?: string,
   function: Graph,
-  inputs: {[key: string]: Graph},
-}
+  inputs: { [key: string]: Graph },
+});
+
+const ANY_SCHEMA: JsonSchema = { type: "any" };
 
 export function mkGraph() {
-  const withTitle = <T extends { $: string }>(node: T, title?: string): T | (T & { title: string }) =>
-    title == null ? node : Object.assign(node, { title })
+  const withMeta = <T extends { $: string }>(node: T, title?: string, outputSchema: JsonSchema = ANY_SCHEMA): Graph =>
+    (title == null
+      ? Object.assign(node, { outputSchema })
+      : Object.assign(node, { title, outputSchema })) as unknown as Graph;
 
   return {
-    input: (title?: string): Graph => {
-      return withTitle({ $: "input" }, title) as Graph
-    },
-    constNode: (value: Jsonable, title?: string): Graph => {
-      return withTitle({ $: "const", value }, title) as Graph
-    },
-    logic: (inputs: LogicInputs, code: string, title?: string): Graph => {
-      return withTitle({ $: "logic", inputs, code }, title) as Graph
-    },
-    ifElse: (condition: Graph, thenNode: Graph, elseNode: Graph, title?: string): Graph => {
-      return withTitle({ $: "IfElse", condition, then: thenNode, else: elseNode }, title) as Graph
-    },
-    loop: (input: Graph, condition: Graph, body: Graph, title?: string): Graph => {
-      return withTitle({ $: "loop", input, condition, body }, title) as Graph
-    },
-    llmCall: (prompt: Graph, model: string, schema: JsonSchema, title?: string): Graph => {
-      return withTitle({ $: "LLMCall", prompt, model, schema }, title) as Graph
-    },
-    functionCall: (fn: Graph, inputs: LogicInputs, title?: string): Graph => {
-      return withTitle({ $: "FunctionCall", function: fn, inputs }, title) as Graph
-    },
-  }
+    input: (title: string, outputSchema: JsonSchema = ANY_SCHEMA): Graph =>
+      ({ $: "input", title, outputSchema }),
+    constNode: (value: Jsonable, title?: string, outputSchema: JsonSchema = ANY_SCHEMA): Graph =>
+      withMeta({ $: "const", value }, title, outputSchema),
+    logic: (inputs: LogicInputs, code: string, title?: string, outputSchema: JsonSchema = ANY_SCHEMA): Graph =>
+      withMeta({ $: "logic", inputs, code }, title, outputSchema),
+    ifElse: (condition: Graph, thenNode: Graph, elseNode: Graph, title?: string, outputSchema: JsonSchema = ANY_SCHEMA): Graph =>
+      withMeta({ $: "IfElse", condition, then: thenNode, else: elseNode }, title, outputSchema),
+    loop: (input: Graph, condition: Graph, body: Graph, title?: string, outputSchema: JsonSchema = ANY_SCHEMA): Graph =>
+      withMeta({ $: "loop", input, condition, body }, title, outputSchema),
+    llmCall: (prompt: Graph, model: string, schema: JsonSchema, title?: string, outputSchema: JsonSchema = schema): Graph =>
+      withMeta({ $: "LLMCall", prompt, model, schema }, title, outputSchema),
+    functionCall: (fn: Graph, inputs: LogicInputs, title?: string, outputSchema: JsonSchema = ANY_SCHEMA): Graph =>
+      withMeta({ $: "FunctionCall", function: fn, inputs }, title, outputSchema),
+  };
 }
+
